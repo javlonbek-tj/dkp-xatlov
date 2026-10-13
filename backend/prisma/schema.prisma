@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  REPUBLIC_EMPLOYEE
+  REGIONAL_EMPLOYEE
+}
+
+enum MkdType {
+  YEAR_2025
+  YEAR_2024
+  NEW_UZBEKISTAN
+}
+
+enum CallStatus {
+  CALLED_SUCCESSFULLY
+  NO_ANSWER
+  CALLBACK_REQUIRED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  fullName     String
+  phone        String?
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  regionAssignments EmployeeRegionAssignment[]
+  sessions          Session[]
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Region {
+  id                      String   @id @default(cuid())
+  name                    String   @unique
+  groupLeaderAssignmentId String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  districts          District[]
+  employeeAssignments EmployeeRegionAssignment[] @relation("RegionEmployees")
+  groupLeaderAssignment EmployeeRegionAssignment? @relation("RegionGroupLeader", fields: [groupLeaderAssignmentId, id], references: [id, regionId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([groupLeaderAssignmentId, id])
+}
+
+model District {
+  id                            String   @id @default(cuid())
+  name                          String
+  regionId                      String
+  engineerCount                 Int?
+  xatlovEmployeeCount           Int?
+  objectCount                   Int?
+  mfyCount                      Int?
+  republicEmployeeAssignmentId  String?
+  regionalEmployeeAssignmentId  String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  region Region @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  republicEmployeeAssignment EmployeeRegionAssignment? @relation("RepublicEmployeeAssignment", fields: [republicEmployeeAssignmentId, regionId], references: [id, regionId], onDelete: Restrict, onUpdate: Cascade)
+  regionalEmployeeAssignment EmployeeRegionAssignment? @relation("RegionalEmployeeAssignment", fields: [regionalEmployeeAssignmentId, regionId], references: [id, regionId], onDelete: Restrict, onUpdate: Cascade)
+  xatlovRecords XatlovRecord[]
+  mkdRecords    MkdRecord[]
+  radLimits     RadLimit[]
+  overdueSnapshots OverdueSnapshot[]
+  callLogs CallLog[]
+
+  @@unique([name, regionId])
+  @@index([regionId])
+  @@index([republicEmployeeAssignmentId, regionId])
+  @@index([regionalEmployeeAssignmentId, regionId])
+}
+
+model XatlovRecord {
+  id                         String   @id @default(cuid())
+  districtId                 String
+  recordDate                 DateTime @db.Date
+  completedMfyCount          Int
+  censusCount                Int
+  completedObjectCount       Int?
+  migrationCount             Int
+  paymentDebt                Decimal? @db.Decimal(14, 2)
+  completedMfyNames          String[] @default([])
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, recordDate])
+  @@index([recordDate])
+}
+
+model MkdRecord {
+  id                    String   @id @default(cuid())
+  districtId            String
+  type                  MkdType
+  targetDate            DateTime @db.Date
+  totalBuildings        Int
+  completedBuildings    Int
+  plannedBuildings      Int
+  completedAgainstPlan  Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, type, targetDate])
+  @@index([targetDate])
+}
+
+model RadLimit {
+  id                   String   @id @default(cuid())
+  districtId           String
+  month                Int
+  year                 Int
+  monthlyLimit         Int
+  rejectedApplications Int
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, month, year])
+  @@index([year, month])
+}
+
+model OverdueSnapshot {
+  id          String   @id @default(cuid())
+  districtId  String
+  recordDate  DateTime @db.Date
+  stage1to3   Int      @default(0)
+  stage4to7   Int      @default(0)
+  stage8to14  Int      @default(0)
+  stage15to30 Int      @default(0)
+  stage31to90 Int      @default(0)
+  stage90plus Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, recordDate])
+  @@index([recordDate])
+}
+
+model CallLog {
+  id                    String     @id @default(cuid())
+  districtId            String
+  callDate              DateTime   @db.Date
+  status                CallStatus
+  monitoringAreas       String[]   @default([])
+  issues                String?
+  nextAction            String?
+  followUpDate          DateTime?  @db.Date
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, callDate])
+  @@index([callDate, status])
+}
+
+model EmployeeRegionAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  regionId  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  region Region @relation("RegionEmployees", fields: [regionId], references: [id], onDelete: Restrict)
+  leadsRegion Region? @relation("RegionGroupLeader")
+  republicDistricts District[] @relation("RepublicEmployeeAssignment")
+  regionalDistricts District[] @relation("RegionalEmployeeAssignment")
+
+  @@unique([userId, regionId])
+  @@unique([id, regionId])
+  @@index([regionId])
+}

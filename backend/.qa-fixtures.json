@@ -1,0 +1,23 @@
+{
+    "adminId":  "cmv5hmr1w0000uv7gdtqvdhaj",
+    "username":  "qa-p6t1-1791823807474-3qg9oh",
+    "password":  "Temporary-QA-Only-2026!",
+    "republic1":  "qa-p6t1-1791823807474-3qg9oh-rep1",
+    "republic2":  "qa-p6t1-1791823807474-3qg9oh-rep2",
+    "regional":  "qa-p6t1-1791823807474-3qg9oh-regional",
+    "regionId":  "53ae13d2-9d58-43d5-8e6c-f4aad7256531",
+    "district1Id":  "cmv5hsnog0007uvrg3pwoyd62",
+    "district2Id":  "cmv5hsogs0009uvrgpqobomad",
+    "republic1Id":  "cmv5hot6n0002uvikrale0ge7",
+    "republic2Id":  "cmv5hotm60003uvikznsnoh5l",
+    "regionalId":  "cmv5hotyo0004uvikc6wqbun1",
+    "assignmentRep1Id":  "cmv5hslsp0001uvrgdniazn99",
+    "assignmentRep2Id":  "cmv5hsme10003uvrgg3e0271l",
+    "assignmentRegionalId":  "cmv5hsmsh0005uvrgeh7twdtb",
+    "xatlov1Id":  "cmv5hujzd000luvrgvxc9ilaa",
+    "xatlov2Id":  "cmv5hulv0000nuvrg49oqmzj2",
+    "mkdId":  "cmv5hvgg6000puvrgdcnezbql",
+    "radId":  "cmv5hvioc000ruvrg8yuor52y",
+    "overdueId":  "cmv5hvkio000tuvrg0arn22pr",
+    "callId":  "cmv5hvma6000vuvrgrj8fito1"
+}

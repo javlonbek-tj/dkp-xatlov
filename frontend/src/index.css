@@ -1,0 +1,35 @@
+@layer theme, base, antd, components, utilities;
+
+@import 'tailwindcss';
+
+@layer base {
+  :root {
+    font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+    color: #1e293b;
+    background: #f5f6fa;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .ant-card {
+    box-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 1px 3px rgb(15 23 42 / 6%);
+  }
+
+  .ant-statistic-content {
+    font-weight: 600;
+  }
+}
