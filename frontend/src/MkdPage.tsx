@@ -19,7 +19,7 @@ type MkdRecord = {
   plannedBuildings: number; completedAgainstPlan: number; remainingPlan: number
   district: District
 }
-type PageData = { districts: District[]; records: MkdRecord[] }
+type PageData = { districts: District[]; records: MkdRecord[]; writableDistrictIds: string[] | null }
 type FormValues = {
   type: MkdType; targetDate: Dayjs; totalBuildings: number; completedBuildings: number
   plannedBuildings: number; completedAgainstPlan: number
@@ -31,7 +31,7 @@ const typeLabels: Record<MkdType, string> = {
 const typeOptions = Object.entries(typeLabels).map(([value, label]) => ({ value, label }))
 
 function MkdPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [] })
+  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: MkdRecord } | null>(null)
@@ -39,6 +39,8 @@ function MkdPage({ token, user }: { token: string; user: User }) {
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, type: undefined as MkdType | undefined, from: undefined as string | undefined, to: undefined as string | undefined })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  // Republic employees see their whole region but edit only the districts they are responsible for.
+  const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
   const load = useCallback(async () => {
     try {
@@ -85,7 +87,7 @@ function MkdPage({ token, user }: { token: string; user: User }) {
     { title: 'Rejadagi ishlar', dataIndex: 'plannedBuildings' },
     { title: 'Reja bo‘yicha bajarilgan', dataIndex: 'completedAgainstPlan' },
     { title: 'Rejada qolgan', dataIndex: 'remainingPlan' },
-    ...(canWrite ? [{ title: 'Amallar', render: (_: unknown, row: MkdRecord) => <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<MkdRecord>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', render: (_: unknown, row: MkdRecord) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<MkdRecord>[number]] : []),
   ]
 
   async function save(values: FormValues) {
@@ -114,7 +116,7 @@ function MkdPage({ token, user }: { token: string; user: User }) {
       <DatePicker placeholder="Sanadan" onChange={(value) => setFilters((old) => ({ ...old, from: value?.format('YYYY-MM-DD') }))} />
       <DatePicker placeholder="Sanagacha" onChange={(value) => setFilters((old) => ({ ...old, to: value?.format('YYYY-MM-DD') }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MKD turi bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => void exportExcel('mkd.xlsx', ['Hudud', 'Tuman', 'Muhandislar', 'Respublika xodimi', 'Hududiy xodim', 'MKD turi', 'Jami uylar', 'Bajarilgan', 'Qolgan', 'Reja sanasi', 'Rejalashtirilgan', 'Reja bo‘yicha bajarilgan', 'Rejada qolgan'], visibleRecords.map((row) => [row.district.region.name, row.district.name, row.district.engineerCount, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName, typeLabels[row.type], row.totalBuildings, row.completedBuildings, row.remainingBuildings, row.targetDate.slice(0, 10), row.plannedBuildings, row.completedAgainstPlan, row.remainingPlan]))}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table rowKey="id" columns={columns} dataSource={visibleRecords} pagination={{ pageSize: 10 }} scroll={{ x: true }} locale={{ emptyText: 'MKD yozuvlari topilmadi' }} /></Card>
+    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MKD turi bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => void exportExcel('mkd.xlsx', ['Hudud', 'Tuman', 'Muhandislar', 'Respublika xodimi', 'Hududiy xodim', 'MKD turi', 'Jami uylar', 'Bajarilgan', 'Qolgan', 'Reja sanasi', 'Rejalashtirilgan', 'Reja bo‘yicha bajarilgan', 'Rejada qolgan'], visibleRecords.map((row) => [row.district.region.name, row.district.name, row.district.engineerCount, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName, typeLabels[row.type], row.totalBuildings, row.completedBuildings, row.remainingBuildings, row.targetDate.slice(0, 10), row.plannedBuildings, row.completedAgainstPlan, row.remainingPlan]))}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table rowKey="id" columns={columns} dataSource={visibleRecords} pagination={{ pageSize: 10 }} scroll={{ x: true }} locale={{ emptyText: 'MKD yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'MKD yozuvini tahrirlash' : 'MKD yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save}>

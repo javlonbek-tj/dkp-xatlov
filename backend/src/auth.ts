@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import express, { type RequestHandler } from 'express';
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { ApiError } from './api-error.js';
 import { prisma } from './db.js';
 import { verifyPassword } from './password.js';
@@ -71,6 +71,28 @@ export function requireRole(...roles: UserRole[]): RequestHandler {
       next();
     }
   };
+}
+
+// Republic and regional employees see every district in the regions they are assigned to.
+export function readableDistrictScope(user: { id: string; role: UserRole }): Prisma.DistrictWhereInput {
+  if (user.role === UserRole.ADMIN) return {};
+  return { region: { employeeAssignments: { some: { userId: user.id } } } };
+}
+
+// Districts the user may add or edit records for, mirroring requireDistrictAccess('write'); null means every district.
+export async function writableDistrictIds(user: { id: string; role: UserRole }, allowGroupLeader = false): Promise<string[] | null> {
+  if (user.role === UserRole.ADMIN) return null;
+  if (user.role !== UserRole.REPUBLIC_EMPLOYEE) return [];
+  const districts = await prisma.district.findMany({
+    where: {
+      OR: [
+        { republicEmployeeAssignment: { is: { userId: user.id } } },
+        ...(allowGroupLeader ? [{ region: { groupLeaderAssignment: { is: { userId: user.id } } } }] : []),
+      ],
+    },
+    select: { id: true },
+  });
+  return districts.map((district) => district.id);
 }
 
 // allowGroupLeader lets a Republic employee who leads the district's region access every district in it.

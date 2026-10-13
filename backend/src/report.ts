@@ -1,7 +1,7 @@
 import express from 'express';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { requireAuth } from './auth.js';
+import { readableDistrictScope, requireAuth } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -23,14 +23,6 @@ function tashkentToday(): Date {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
-function districtScope(userId: string, role: UserRole): Prisma.DistrictWhereInput {
-  if (role === UserRole.REPUBLIC_EMPLOYEE) {
-    return { OR: [{ republicEmployeeAssignment: { is: { userId } } }, { region: { groupLeaderAssignment: { is: { userId } } } }] };
-  }
-  if (role === UserRole.REGIONAL_EMPLOYEE) return { region: { employeeAssignments: { some: { userId } } } };
-  return {};
-}
-
 // One row per district of the selected region, combining district data with the latest Xatlov snapshot,
 // the RAD limit for the report month, and the latest overdue stage counts on or before the report date.
 router.get('/', requireAuth, async (request, response, next) => {
@@ -42,7 +34,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       throw new ApiError(400, 'INVALID_FILTER', 'Region filter must be a string');
     }
 
-    const scope = districtScope(user.id, user.role);
+    const scope = readableDistrictScope(user);
     const regions = await prisma.region.findMany({
       where: { districts: { some: scope } },
       select: { id: true, name: true },

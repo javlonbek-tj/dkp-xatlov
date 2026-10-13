@@ -1,7 +1,7 @@
 import express from 'express';
-import { MkdType, Prisma, UserRole } from '@prisma/client';
+import { MkdType, Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { requireAuth, requireDistrictAccess } from './auth.js';
+import { readableDistrictScope, requireAuth, requireDistrictAccess, writableDistrictIds } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -54,12 +54,6 @@ function parsePayload(body: unknown) {
   };
 }
 
-function districtScope(userId: string, role: UserRole): Prisma.DistrictWhereInput {
-  if (role === UserRole.REPUBLIC_EMPLOYEE) return { OR: [{ republicEmployeeAssignment: { is: { userId } } }, { region: { groupLeaderAssignment: { is: { userId } } } }] };
-  if (role === UserRole.REGIONAL_EMPLOYEE) return { region: { employeeAssignments: { some: { userId } } } };
-  return {};
-}
-
 function withRemaining<T extends { totalBuildings: number; completedBuildings: number; plannedBuildings: number; completedAgainstPlan: number }>(record: T) {
   return {
     ...record,
@@ -83,7 +77,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     if (startDate && endDate && startDate > endDate) {
       throw new ApiError(400, 'INVALID_FILTER', 'The start date must not be after the end date');
     }
-    const scope = districtScope(user.id, user.role);
+    const scope = readableDistrictScope(user);
     const locationFilter: Prisma.DistrictWhereInput = {
       ...scope,
       ...(regionId ? { regionId: regionId as string } : {}),
@@ -103,7 +97,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       include: recordInclude,
       orderBy: [{ targetDate: 'desc' }, { district: { name: 'asc' } }, { type: 'asc' }],
     });
-    response.json({ districts, records: records.map(withRemaining) });
+    response.json({ districts, records: records.map(withRemaining), writableDistrictIds: await writableDistrictIds(user, true) });
   } catch (error) { next(error); }
 });
 

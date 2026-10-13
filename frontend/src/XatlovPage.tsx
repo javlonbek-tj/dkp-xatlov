@@ -18,7 +18,7 @@ type RecordRow = {
   paymentDebt: string | null
   completedMfyNames: string[]; district: District
 }
-type ApiData = { districts: District[]; records: RecordRow[] }
+type ApiData = { districts: District[]; records: RecordRow[]; writableDistrictIds: string[] | null }
 type Values = {
   recordDate: Dayjs
   completedMfyCount: number; censusCount: number; completedObjectCount: number; migrationCount: number
@@ -32,7 +32,7 @@ function employeeCell(user?: { fullName: string; phone?: string | null }) {
 }
 
 function XatlovPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<ApiData>({ districts: [], records: [] })
+  const [data, setData] = useState<ApiData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: RecordRow } | null>(null)
@@ -40,6 +40,8 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, from: undefined as string | undefined, to: undefined as string | undefined })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  // Republic employees see their whole region but edit only the districts they are responsible for.
+  const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
   const load = useCallback(async () => {
     try {
@@ -134,7 +136,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     ] },
     { title: 'Tugallangan MFY nomlari', key: 'completedMfyNames', width: 220, ellipsis: true, render: (_, row) => row.completedMfyNames.join(', ') || '—' },
     { title: 'Sana', dataIndex: 'recordDate', width: 110, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RecordRow) => <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RecordRow>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RecordRow) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RecordRow>[number]] : []),
   ]
 
   async function save(values: Values) {
@@ -166,7 +168,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       <DatePicker placeholder="Sanadan" onChange={(value) => setFilters((old) => ({ ...old, from: value?.format('YYYY-MM-DD') }))} />
       <DatePicker placeholder="Sanagacha" onChange={(value) => setFilters((old) => ({ ...old, to: value?.format('YYYY-MM-DD') }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1670 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1670 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save}>

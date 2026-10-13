@@ -14,7 +14,7 @@ type District = {
 }
 type StageField = 'stage1to3' | 'stage4to7' | 'stage8to14' | 'stage15to30' | 'stage31to90' | 'stage90plus'
 type OverdueRecord = { id: string; districtId: string; recordDate: string; district: District } & Record<StageField, number>
-type PageData = { districts: District[]; records: OverdueRecord[] }
+type PageData = { districts: District[]; records: OverdueRecord[]; writableDistrictIds: string[] | null }
 type Values = { recordDate: Dayjs } & Record<StageField, number>
 
 const stages: { field: StageField; label: string }[] = [
@@ -29,7 +29,7 @@ function employeeCell(user?: Employee) {
 }
 
 function OverdueApplicationsPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [] })
+  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: OverdueRecord } | null>(null)
@@ -37,6 +37,8 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, from: undefined as string | undefined, to: undefined as string | undefined })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  // Republic employees see their whole region but edit only the districts they are responsible for.
+  const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
   const load = useCallback(async () => {
     try {
@@ -84,7 +86,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
     })) },
     { title: 'Jami', key: 'total', width: 90, align: 'center', render: (_, row) => <Tag color={worstIds.has(row.id) ? 'red' : total(row) ? 'orange' : 'default'} className="!m-0 min-w-10 text-center !font-semibold">{total(row)}</Tag> },
     { title: 'Sana', dataIndex: 'recordDate', width: 110, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: OverdueRecord) => <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<OverdueRecord>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: OverdueRecord) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<OverdueRecord>[number]] : []),
   ]
 
   async function save(values: Values) {
@@ -123,7 +125,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
             row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName,
             ...stages.map((stage) => row[stage.field]), total(row), dayjs(row.recordDate.slice(0, 10)).format('DD.MM.YYYY'),
           ]), { highlight: (row) => worstIds.has(visibleRecords[row].id) })}>Excel uchun eksport</Button>
-          <Select showSearch optionFilterProp="label" placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} value={null} options={filterDistricts.map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => id && openEditor(id)} />
+          <Select showSearch optionFilterProp="label" placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} value={null} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => id && openEditor(id)} />
         </Space>
       </div>
       <Table

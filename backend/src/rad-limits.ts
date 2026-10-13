@@ -1,7 +1,7 @@
 import express from 'express';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { requireAuth, requireDistrictAccess } from './auth.js';
+import { readableDistrictScope, requireAuth, requireDistrictAccess, writableDistrictIds } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -40,12 +40,6 @@ function parsePayload(body: unknown) {
   };
 }
 
-function districtScope(userId: string, role: UserRole): Prisma.DistrictWhereInput {
-  if (role === UserRole.REPUBLIC_EMPLOYEE) return { OR: [{ republicEmployeeAssignment: { is: { userId } } }, { region: { groupLeaderAssignment: { is: { userId } } } }] };
-  if (role === UserRole.REGIONAL_EMPLOYEE) return { region: { employeeAssignments: { some: { userId } } } };
-  return {};
-}
-
 function withRemaining<T extends { monthlyLimit: number; rejectedApplications: number }>(record: T) {
   return { ...record, remainingLimit: record.monthlyLimit - record.rejectedApplications };
 }
@@ -59,7 +53,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     }
     const month = parseQueryInteger(request.query.month, 'month', 1, 12);
     const year = parseQueryInteger(request.query.year, 'year', 1, 9999);
-    const scope = districtScope(user.id, user.role);
+    const scope = readableDistrictScope(user);
     const locationFilter: Prisma.DistrictWhereInput = {
       ...scope,
       ...(regionId ? { regionId: regionId as string } : {}),
@@ -79,7 +73,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       include: recordInclude,
       orderBy: [{ year: 'desc' }, { month: 'desc' }, { district: { name: 'asc' } }],
     });
-    response.json({ districts, records: records.map(withRemaining) });
+    response.json({ districts, records: records.map(withRemaining), writableDistrictIds: await writableDistrictIds(user, true) });
   } catch (error) { next(error); }
 });
 

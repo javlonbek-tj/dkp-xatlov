@@ -1,7 +1,7 @@
 import express from 'express';
-import { CallStatus, Prisma, UserRole } from '@prisma/client';
+import { CallStatus, Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { requireAuth, requireDistrictAccess } from './auth.js';
+import { readableDistrictScope, requireAuth, requireDistrictAccess, writableDistrictIds } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -42,12 +42,6 @@ function parsePayload(body: unknown) {
   };
 }
 
-function districtScope(userId: string, role: UserRole): Prisma.DistrictWhereInput {
-  if (role === UserRole.REPUBLIC_EMPLOYEE) return { republicEmployeeAssignment: { is: { userId } } };
-  if (role === UserRole.REGIONAL_EMPLOYEE) return { region: { employeeAssignments: { some: { userId } } } };
-  return {};
-}
-
 function todayInTashkent(): Date {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const part = (type: string) => parts.find((item) => item.type === type)!.value;
@@ -61,7 +55,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const districtId = request.query.districtId;
     if ([dateValue, districtId].some((value) => value !== undefined && typeof value !== 'string')) throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     const callDate = dateValue ? parseDate(dateValue, 'Date') : todayInTashkent();
-    const scope = districtScope(user.id, user.role);
+    const scope = readableDistrictScope(user);
     const districtWhere: Prisma.DistrictWhereInput = { ...scope, ...(districtId ? { id: districtId as string } : {}) };
     const [districts, records] = await Promise.all([
       prisma.district.findMany({ where: districtWhere, orderBy: [{ region: { name: 'asc' } }, { name: 'asc' }], include: districtInclude }),
@@ -73,7 +67,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       const record = recordByDistrict.get(district.id);
       return !record || record.status === CallStatus.CALLBACK_REQUIRED;
     });
-    response.json({ callDate: callDate.toISOString().slice(0, 10), districts, records, needsAttention, notContactedCount: districts.length - recordedDistrictIds.size });
+    response.json({ callDate: callDate.toISOString().slice(0, 10), districts, records, needsAttention, writableDistrictIds: await writableDistrictIds(user), notContactedCount: districts.length - recordedDistrictIds.size });
   } catch (error) { next(error); }
 });
 

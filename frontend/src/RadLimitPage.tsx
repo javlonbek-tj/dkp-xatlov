@@ -14,7 +14,7 @@ type RadLimit = {
   id: string; districtId: string; month: number; year: number; monthlyLimit: number
   rejectedApplications: number; remainingLimit: number; district: District
 }
-type PageData = { districts: District[]; records: RadLimit[] }
+type PageData = { districts: District[]; records: RadLimit[]; writableDistrictIds: string[] | null }
 type Values = { month: number; year: number; monthlyLimit: number; rejectedApplications: number }
 
 const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
@@ -23,7 +23,7 @@ const currentMonth = new Date().getMonth() + 1
 const currentYear = new Date().getFullYear()
 
 function RadLimitPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [] })
+  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: RadLimit } | null>(null)
@@ -31,6 +31,8 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, month: currentMonth as number | undefined, year: currentYear as number | undefined })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  // Republic employees see their whole region but edit only the districts they are responsible for.
+  const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
   const load = useCallback(async () => {
     try {
@@ -124,7 +126,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
       const percent = Math.round(row.rejectedApplications / row.monthlyLimit * 100)
       return <Tag color={worstIds.has(row.id) ? 'red' : 'blue'} className="!m-0 min-w-12 text-center !font-semibold">{percent}%</Tag>
     } },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RadLimit) => <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RadLimit>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RadLimit) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RadLimit>[number]] : []),
   ]
 
   async function save(values: Values) {
@@ -147,7 +149,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
       <Select allowClear placeholder="Oy" className="min-w-36" value={filters.month} options={monthOptions} onChange={(month) => setFilters((old) => ({ ...old, month }))} />
       <InputNumber aria-label="Yil filtri" placeholder="Yil" min={1} max={9999} precision={0} value={filters.year} onChange={(year) => setFilters((old) => ({ ...old, year: year ?? undefined }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1260 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
+    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1260 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'RAD limitini tahrirlash' : 'RAD limitini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save}>

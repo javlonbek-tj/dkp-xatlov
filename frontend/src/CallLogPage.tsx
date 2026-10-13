@@ -13,13 +13,13 @@ type District = {
 }
 type Status = 'CALLED_SUCCESSFULLY' | 'NO_ANSWER' | 'CALLBACK_REQUIRED'
 type CallRecord = { id: string; districtId: string; callDate: string; status: Status; monitoringAreas: string[]; issues: string | null; nextAction: string | null; followUpDate: string | null; district: District }
-type PageData = { districts: District[]; records: CallRecord[]; needsAttention: District[]; notContactedCount: number }
+type PageData = { districts: District[]; records: CallRecord[]; writableDistrictIds: string[] | null; needsAttention: District[]; notContactedCount: number }
 type Values = { callDate: Dayjs; status: Status; monitoringAreas: string; issues?: string; nextAction?: string; followUpDate?: Dayjs | null }
 
 const statusLabels: Record<Status, string> = { CALLED_SUCCESSFULLY: 'Muvaffaqiyatli bogʻlanildi', NO_ANSWER: 'Javob bermadi', CALLBACK_REQUIRED: 'Qayta qoʻngʻiroq kerak' }
 
 function CallLogPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [], needsAttention: [], notContactedCount: 0 })
+  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [], needsAttention: [], notContactedCount: 0 })
   const [selectedDate, setSelectedDate] = useState(dayjs())
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,6 +27,8 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
   const [editor, setEditor] = useState<{ districtId: string; record?: CallRecord } | null>(null)
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  // Republic employees see their whole region but edit only the districts they are responsible for.
+  const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,7 +62,7 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
     { title: 'Aniqlangan muammolar', dataIndex: 'issues', ellipsis: true },
     { title: 'Keyingi chora / izoh', dataIndex: 'nextAction', ellipsis: true },
     { title: 'Qayta aloqa sanasi', dataIndex: 'followUpDate', render: (value: string | null) => value?.slice(0, 10) ?? '—' },
-    ...(canWrite ? [{ title: 'Amallar', render: (_: unknown, row: CallRecord) => <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<CallRecord>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', render: (_: unknown, row: CallRecord) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<CallRecord>[number]] : []),
   ]
 
   async function save(values: Values) {
@@ -90,11 +92,11 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
       <Table rowKey="id" dataSource={data.needsAttention} pagination={{ pageSize: 10 }} scroll={{ x: true }} locale={{ emptyText: 'Barcha tumanlar bo‘yicha qo‘ng‘iroq qayd etilgan' }} columns={[
         { title: 'Hudud', dataIndex: ['region', 'name'] }, { title: 'Tuman', dataIndex: 'name' },
         { title: 'Holati', render: (_, district) => { const row = data.records.find((item) => item.districtId === district.id); return row ? statusLabels.CALLBACK_REQUIRED : 'Qoʻngʻiroq qayd etilmagan' } },
-        ...(canWrite ? [{ title: 'Amallar', render: (_: unknown, district: District) => { const row = data.records.find((item) => item.districtId === district.id); return <Button size="small" onClick={() => openEditor(district.id, row)}> {row ? 'Tahrirlash' : 'Qoʻngʻiroqni qayd etish'} </Button> } } as ColumnsType<District>[number]] : []),
+        ...(canWrite ? [{ title: 'Amallar', render: (_: unknown, district: District) => { const row = data.records.find((item) => item.districtId === district.id); return canEdit(district.id) && <Button size="small" onClick={() => openEditor(district.id, row)}> {row ? 'Tahrirlash' : 'Qoʻngʻiroqni qayd etish'} </Button> } } as ColumnsType<District>[number]] : []),
       ]} />
     </Card>
     <Card title={`Qoʻngʻiroqlar tarixi — ${selectedDate.format('YYYY-MM-DD')}`} loading={loading}>
-      <div className="mb-4 flex justify-end"><Select placeholder="Tuman uchun qoʻngʻiroq qayd etish" className="min-w-64" disabled={!canWrite} options={data.districts.filter((district) => !data.records.some((row) => row.districtId === district.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></div>
+      <div className="mb-4 flex justify-end"><Select placeholder="Tuman uchun qoʻngʻiroq qayd etish" className="min-w-64" disabled={!canWrite} options={data.districts.filter((district) => canEdit(district.id) && !data.records.some((row) => row.districtId === district.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></div>
       <div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki muammo bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Button onClick={() => void exportExcel('qongiroqlar-jurnali.xlsx', ['Sana', 'Hudud', 'Tuman', 'Respublika xodimi', 'Holati', 'Muhokama qilingan yoʻnalishlar', 'Aniqlangan muammolar', 'Keyingi chora / izoh', 'Qayta aloqa sanasi'], visibleRecords.map((row) => [row.callDate.slice(0, 10), row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, statusLabels[row.status], row.monitoringAreas.join('; '), row.issues, row.nextAction, row.followUpDate?.slice(0, 10)]))}>Excel uchun eksport</Button></div>
       <Table rowKey="id" columns={columns} dataSource={visibleRecords} pagination={{ pageSize: 10 }} scroll={{ x: true }} locale={{ emptyText: 'Bu sana uchun qoʻngʻiroqlar qayd etilmagan' }} />
     </Card>

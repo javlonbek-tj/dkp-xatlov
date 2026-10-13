@@ -1,7 +1,7 @@
 import express from 'express';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { requireAuth, requireDistrictAccess } from './auth.js';
+import { readableDistrictScope, requireAuth, requireDistrictAccess, writableDistrictIds } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -54,16 +54,6 @@ function parsePayload(body: unknown) {
   };
 }
 
-function districtScope(userId: string, role: UserRole): Prisma.DistrictWhereInput {
-  if (role === UserRole.REPUBLIC_EMPLOYEE) {
-    return { OR: [{ republicEmployeeAssignment: { is: { userId } } }, { region: { groupLeaderAssignment: { is: { userId } } } }] };
-  }
-  if (role === UserRole.REGIONAL_EMPLOYEE) {
-    return { region: { employeeAssignments: { some: { userId } } } };
-  }
-  return {};
-}
-
 router.get('/', requireAuth, async (request, response, next) => {
   try {
     const user = request.auth!;
@@ -79,7 +69,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     if (startDate && endDate && startDate > endDate) {
       throw new ApiError(400, 'INVALID_FILTER', 'The start date must not be after the end date');
     }
-    const scope = districtScope(user.id, user.role);
+    const scope = readableDistrictScope(user);
     const authorizedDistricts: Prisma.DistrictWhereInput = { ...scope };
     const locationFilter: Prisma.DistrictWhereInput = {
       ...authorizedDistricts,
@@ -96,7 +86,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       ...(startDate || endDate ? { recordDate: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } } : {}),
     };
     const records = await prisma.xatlovRecord.findMany({ where: recordWhere, include: recordInclude, orderBy: [{ recordDate: 'desc' }, { district: { name: 'asc' } }] });
-    response.json({ districts, records });
+    response.json({ districts, records, writableDistrictIds: await writableDistrictIds(user, true) });
   } catch (error) { next(error); }
 });
 
