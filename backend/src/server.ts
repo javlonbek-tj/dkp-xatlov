@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express, { type ErrorRequestHandler } from 'express';
 import { ApiError } from './api-error.js';
 import { adminRouter } from './admin.js';
@@ -36,6 +39,15 @@ app.use('/api', (_request, response) => {
     error: { code: 'NOT_FOUND', message: 'API endpoint not found' },
   });
 });
+
+// In production the built frontend is served by the same app; other routes fall back to index.html.
+const frontendDist = fileURLToPath(new URL('../../frontend/dist', import.meta.url));
+if (existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('/{*path}', (_request, response) => {
+    response.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 const errorHandler: ErrorRequestHandler = (error: unknown, _request, response, _next) => {
   if (
