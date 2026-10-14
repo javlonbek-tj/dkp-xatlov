@@ -24,8 +24,8 @@ function parsePayload(body: unknown) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ApiError(400, 'INVALID_RECORD', 'A call record object is required');
   const input = body as Record<string, unknown>;
   if (!statuses.includes(input.status as CallStatus)) throw new ApiError(400, 'INVALID_STATUS', 'Choose a supported call status');
-  if (!Array.isArray(input.monitoringAreas) || input.monitoringAreas.length > 20 || input.monitoringAreas.some((area) => typeof area !== 'string' || !area.trim() || area.trim().length > 100)) {
-    throw new ApiError(400, 'INVALID_AREAS', 'Monitoring areas must be a list of up to 20 names, each at most 100 characters');
+  if (!Array.isArray(input.monitoringAreas) || input.monitoringAreas.length > 20 || input.monitoringAreas.some((area) => typeof area !== 'string' || !area.trim() || area.trim().length > 2000)) {
+    throw new ApiError(400, 'INVALID_AREAS', 'Monitoring areas discussed must be at most 2000 characters');
   }
   const optionalText = (value: unknown, field: string, max: number) => {
     if (value === null || value === undefined || value === '') return null;

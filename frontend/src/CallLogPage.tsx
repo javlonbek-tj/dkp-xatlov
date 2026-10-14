@@ -58,7 +58,7 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
     { title: 'Tuman', dataIndex: ['district', 'name'] },
     { title: 'Respublika xodimi', render: (_, row) => row.district.republicEmployeeAssignment?.user.fullName ?? '—' },
     { title: 'Holati', dataIndex: 'status', render: (status: Status) => <Tag color={status === 'CALLED_SUCCESSFULLY' ? 'green' : status === 'CALLBACK_REQUIRED' ? 'orange' : 'default'}>{statusLabels[status]}</Tag> },
-    { title: 'Muhokama qilingan yoʻnalishlar', render: (_, row) => row.monitoringAreas.join(', ') || '—' },
+    { title: 'Muhokama qilingan yoʻnalishlar', render: (_, row) => row.monitoringAreas.join(', ') || '—', ellipsis: true },
     { title: 'Aniqlangan muammolar', dataIndex: 'issues', ellipsis: true },
     { title: 'Keyingi chora / izoh', dataIndex: 'nextAction', ellipsis: true },
     { title: 'Qayta aloqa sanasi', dataIndex: 'followUpDate', render: (value: string | null) => value?.slice(0, 10) ?? '—' },
@@ -69,7 +69,7 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
     if (!editor) return
     const payload = {
       callDate: values.callDate.format('YYYY-MM-DD'), status: values.status,
-      monitoringAreas: values.monitoringAreas.split('\n').map((item) => item.trim()).filter(Boolean),
+      monitoringAreas: values.monitoringAreas?.trim() ? [values.monitoringAreas.trim()] : [],
       issues: values.issues?.trim() || null, nextAction: values.nextAction?.trim() || null,
       followUpDate: values.followUpDate?.format('YYYY-MM-DD') ?? null,
     }
@@ -105,7 +105,7 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
     <Form form={form} layout="vertical" onFinish={save}>
       <Form.Item label="Sana" name="callDate" rules={[{ required: true }]}><DatePicker className="w-full" /></Form.Item>
       <Form.Item label="Qoʻngʻiroq holati" name="status" rules={[{ required: true }]}><Select options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
-      <Form.Item label="Muhokama qilingan yoʻnalishlar (har qatorda bittadan)" name="monitoringAreas"><Input.TextArea rows={3} /></Form.Item>
+      <Form.Item label="Muhokama qilingan yoʻnalishlar" name="monitoringAreas"><Input.TextArea rows={4} maxLength={2000} /></Form.Item>
       <Form.Item label="Aniqlangan muammolar" name="issues"><Input.TextArea rows={3} maxLength={2000} /></Form.Item>
       <Form.Item label="Keyingi chora yoki izoh" name="nextAction"><Input.TextArea rows={3} maxLength={2000} /></Form.Item>
       <Form.Item label="Qayta aloqa sanasi" name="followUpDate"><DatePicker className="w-full" /></Form.Item>
