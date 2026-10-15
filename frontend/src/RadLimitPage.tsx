@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
@@ -11,16 +12,14 @@ type District = {
   regionalEmployeeAssignment: { user: { fullName: string } } | null
 }
 type RadLimit = {
-  id: string; districtId: string; month: number; year: number; monthlyLimit: number
+  id: string; districtId: string; recordDate: string; monthlyLimit: number
   rejectedApplications: number; remainingLimit: number; district: District
 }
 type PageData = { districts: District[]; records: RadLimit[]; writableDistrictIds: string[] | null }
-type Values = { month: number; year: number; monthlyLimit: number; rejectedApplications: number }
+// Values are month-to-date as of the record date.
+type Values = { recordDate: Dayjs; monthlyLimit: number; rejectedApplications: number }
 
-const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
-const monthOptions = months.map((label, index) => ({ value: index + 1, label }))
-const currentMonth = new Date().getMonth() + 1
-const currentYear = new Date().getFullYear()
+const formatDate = (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY')
 
 function RadLimitPage({ token, user }: { token: string; user: User }) {
   const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
@@ -28,7 +27,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: RadLimit } | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, month: currentMonth as number | undefined, year: currentYear as number | undefined })
+  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
@@ -36,11 +35,9 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
 
   const load = useCallback(async () => {
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ date: filters.date.format('YYYY-MM-DD') })
       if (filters.regionId) params.set('regionId', filters.regionId)
       if (filters.districtId) params.set('districtId', filters.districtId)
-      if (filters.month) params.set('month', String(filters.month))
-      if (filters.year) params.set('year', String(filters.year))
       const response = await fetch(`/api/rad-limits?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error?.message ?? 'RAD ma’lumotlarini yuklab bo‘lmadi')
@@ -66,11 +63,25 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
   function openEditor(districtId: string, record?: RadLimit) {
     setEditor({ districtId, record })
     form.setFieldsValue(record ? {
-      month: record.month,
-      year: record.year,
+      recordDate: dayjs(record.recordDate.slice(0, 10)),
       monthlyLimit: record.monthlyLimit,
       rejectedApplications: record.rejectedApplications,
-    } : { month: currentMonth, year: currentYear, monthlyLimit: 0, rejectedApplications: 0 })
+    } : { recordDate: filters.date, monthlyLimit: 0, rejectedApplications: 0 })
+    if (!record) void prefill(districtId, filters.date)
+  }
+
+  // A new record starts from the district's previous record; rejections restart at 0 in a new month.
+  async function prefill(districtId: string, date: Dayjs) {
+    try {
+      const response = await fetch(`/api/rad-limits/districts/${districtId}/previous?date=${date.format('YYYY-MM-DD')}`, { headers: { Authorization: `Bearer ${token}` } })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error?.message ?? 'Oldingi ma’lumotni yuklab bo‘lmadi')
+      const previous = result.record as { recordDate: string; monthlyLimit: number; rejectedApplications: number } | null
+      // Ignore the answer if the user has picked another date meanwhile.
+      if (!form.getFieldValue('recordDate')?.isSame(date, 'day')) return
+      const sameMonth = previous && dayjs(previous.recordDate.slice(0, 10)).isSame(date, 'month')
+      form.setFieldsValue({ monthlyLimit: previous?.monthlyLimit ?? 0, rejectedApplications: sameMonth ? previous.rejectedApplications : 0 })
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Oldingi ma’lumotni yuklab bo‘lmadi') }
   }
 
   // Totals for the visible rows.
@@ -96,8 +107,8 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
 
   // Same layout as the table: grouped headers, the totals row first and the worst districts in red.
   function exportTable() {
-    void exportExcel('rad-limitlari.xlsx', [
-      'Hudud', 'Tuman', 'Respublika xodimi', 'Hududiy xodim', 'Davr',
+    void exportExcel(`rad-limitlari-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
+      'Hudud', 'Tuman', 'Respublika xodimi', 'Hududiy xodim', 'Sana',
       { title: 'Limit', children: ['Oylik limit', 'Rad etilgan', 'Qolgan limit'] },
       'Foiz',
     ], [
@@ -105,7 +116,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
       ...visibleRecords.map((row) => [
         row.district.region.name, row.district.name,
         row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName,
-        `${months[row.month - 1]} ${row.year}`, row.monthlyLimit, row.rejectedApplications, row.remainingLimit,
+        formatDate(row.recordDate), row.monthlyLimit, row.rejectedApplications, row.remainingLimit,
         usagePercent(row.monthlyLimit, row.rejectedApplications),
       ]),
     ], { totalRows: 1, highlight: (row) => row > 0 && worstIds.has(visibleRecords[row - 1].id) })
@@ -115,7 +126,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
     { title: 'Tuman', key: 'district', width: 190, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
     { title: 'Respublika xodimi', key: 'republic', width: 190, ellipsis: true, render: (_, row) => row.district.republicEmployeeAssignment?.user.fullName ?? '—' },
     { title: 'Hududiy xodim', key: 'regional', width: 190, ellipsis: true, render: (_, row) => row.district.regionalEmployeeAssignment?.user.fullName ?? '—' },
-    { title: 'Davr', key: 'period', width: 130, align: 'center', render: (_, row) => `${months[row.month - 1]} ${row.year}` },
+    { title: 'Sana', dataIndex: 'recordDate', width: 130, align: 'center', render: (value: string) => formatDate(value) },
     { title: 'Limit', children: [
       { title: 'Oylik limit', dataIndex: 'monthlyLimit', width: 110, align: 'center', render: (value: number) => value.toLocaleString('ru-RU') },
       { title: 'Rad etilgan', dataIndex: 'rejectedApplications', width: 110, align: 'center', render: (value: number) => value.toLocaleString('ru-RU') },
@@ -133,7 +144,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
     if (!editor) return
     try {
       const path = editor.record ? `/api/rad-limits/districts/${editor.districtId}/records/${editor.record.id}` : `/api/rad-limits/districts/${editor.districtId}`
-      const response = await fetch(path, { method: editor.record ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(values) })
+      const response = await fetch(path, { method: editor.record ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...values, recordDate: values.recordDate.format('YYYY-MM-DD') }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error?.message ?? 'Saqlash amalga oshmadi')
       setEditor(null)
@@ -146,17 +157,15 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
-      <Select allowClear placeholder="Oy" className="min-w-36" value={filters.month} options={monthOptions} onChange={(month) => setFilters((old) => ({ ...old, month }))} />
-      <InputNumber aria-label="Yil filtri" placeholder="Yil" min={1} max={9999} precision={0} value={filters.year} onChange={(year) => setFilters((old) => ({ ...old, year: year ?? undefined }))} />
+      <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
     <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1260 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'RAD limitini tahrirlash' : 'RAD limitini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
-    <Form form={form} layout="vertical" onFinish={save}>
-      <Form.Item label="Oy" name="month" rules={[{ required: true }]}><Select options={monthOptions} /></Form.Item>
-      <Form.Item label="Yil" name="year" rules={[{ required: true }]}><InputNumber min={1} max={9999} precision={0} className="w-full" /></Form.Item>
+    <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>
+      <Form.Item label="Sana" name="recordDate" rules={[{ required: true, message: 'Sanani tanlang' }]}><DatePicker className="w-full" format="DD.MM.YYYY" /></Form.Item>
       <Form.Item label="Oylik limit" name="monthlyLimit" rules={[{ required: true }]}><InputNumber min={0} precision={0} className="w-full" /></Form.Item>
-      <Form.Item label="Rad etilgan arizalar" name="rejectedApplications" rules={[{ required: true }]}><InputNumber min={0} precision={0} className="w-full" /></Form.Item>
+      <Form.Item label="Rad etilgan arizalar (oy boshidan)" name="rejectedApplications" rules={[{ required: true }]}><InputNumber min={0} precision={0} className="w-full" /></Form.Item>
     </Form>
   </Modal>
   </div>

@@ -72,7 +72,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const today = tashkentToday();
     const dateFilter = from || to ? { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } : undefined;
 
-    const [xatlovRows, mkdRows, radAggregate, overdueRows] = await Promise.all([
+    const [xatlovRows, mkdRows, radRows, overdueRows] = await Promise.all([
       prisma.xatlovRecord.findMany({
         where: { districtId: { in: ids }, ...(dateFilter ? { recordDate: dateFilter } : {}) },
         select: { districtId: true, recordDate: true, completedMfyCount: true, censusCount: true, migrationCount: true },
@@ -83,9 +83,11 @@ router.get('/', requireAuth, async (request, response, next) => {
         select: { districtId: true, type: true, targetDate: true, totalBuildings: true, completedBuildings: true, plannedBuildings: true, completedAgainstPlan: true },
         orderBy: [{ targetDate: 'desc' }, { createdAt: 'desc' }],
       }),
-      prisma.radLimit.aggregate({
-        where: { districtId: { in: ids }, month: today.month, year: today.year },
-        _sum: { monthlyLimit: true, rejectedApplications: true },
+      // Latest month-to-date RAD snapshot per district in the current month.
+      prisma.radLimit.findMany({
+        where: { districtId: { in: ids }, recordDate: { gte: new Date(Date.UTC(today.year, today.month - 1, 1)), lte: today.date } },
+        orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
+        distinct: ['districtId'],
       }),
       prisma.overdueSnapshot.findMany({
         where: { districtId: { in: ids }, ...(dateFilter ? { recordDate: dateFilter } : {}) },
@@ -106,8 +108,8 @@ router.get('/', requireAuth, async (request, response, next) => {
     // Latest overdue stage counts per district, summed.
     const overdueStages = Object.fromEntries(stageKeys.map((stage) => [stage, sum(overdueRows, (row) => row[stageFieldByKey[stage]])])) as Record<Stage, number>;
     const overdueTotal = sum(stageKeys, (stage) => overdueStages[stage]);
-    const currentMonthLimit = radAggregate._sum.monthlyLimit ?? 0;
-    const rejectedApplications = radAggregate._sum.rejectedApplications ?? 0;
+    const currentMonthLimit = sum(radRows, (row) => row.monthlyLimit);
+    const rejectedApplications = sum(radRows, (row) => row.rejectedApplications);
     response.json({
       filters: { from: from?.toISOString().slice(0, 10) ?? null, to: to?.toISOString().slice(0, 10) ?? null, radMonth: today.month, radYear: today.year },
       regions: accessibleRegions,

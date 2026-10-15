@@ -136,8 +136,8 @@ model MkdRecord {
 model RadLimit {
   id                   String   @id @default(cuid())
   districtId           String
-  month                Int
-  year                 Int
+  // Month-to-date snapshot: the limit and rejections of recordDate's month as of that day.
+  recordDate           DateTime @db.Date
   monthlyLimit         Int
   rejectedApplications Int
   createdAt            DateTime @default(now())
@@ -145,8 +145,8 @@ model RadLimit {
 
   district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
-  @@unique([districtId, month, year])
-  @@index([year, month])
+  @@unique([districtId, recordDate])
+  @@index([recordDate])
 }
 
 model OverdueSnapshot {

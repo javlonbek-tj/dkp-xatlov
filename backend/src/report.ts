@@ -63,8 +63,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const friday = new Date(weekStart);
     friday.setUTCDate(weekStart.getUTCDate() + 4);
     const weekEnd = date < friday ? date : friday;
-    const month = date.getUTCMonth() + 1;
-    const year = date.getUTCFullYear();
+    const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 
     const [xatlovRecords, weeklyXatlov, radLimits, overdue] = await Promise.all([
       prisma.xatlovRecord.findMany({
@@ -78,7 +77,12 @@ router.get('/', requireAuth, async (request, response, next) => {
         _sum: { migrationCount: true },
         _count: { _all: true },
       }),
-      prisma.radLimit.findMany({ where: { districtId: { in: ids }, month, year } }),
+      // Latest month-to-date RAD snapshot in the report month, on or before the report date.
+      prisma.radLimit.findMany({
+        where: { districtId: { in: ids }, recordDate: { gte: monthStart, lte: date } },
+        orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
+        distinct: ['districtId'],
+      }),
       prisma.overdueSnapshot.findMany({
         where: { districtId: { in: ids }, recordDate: { lte: date } },
         orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],

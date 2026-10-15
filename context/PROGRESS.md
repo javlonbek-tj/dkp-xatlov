@@ -191,3 +191,17 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Replaced "Sanadan"/"Sanagacha" with a single date picker defaulting to yesterday; the API now requires `date` and returns that date's snapshots. New records default to the selected date; the export filename includes the date.
 - Files changed: `backend/src/overdue-applications.ts`, `frontend/src/OverdueApplicationsPage.tsx`, `context/PROGRESS.md`.
 - Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### RAD limits - Daily dated records (completed in code, migration pending)
+
+- User decisions: each RAD record is a month-to-date snapshot for a date (limit and rejections from the start of the month up to that date); existing monthly rows take the Tashkent date of their last edit, clamped to their own month.
+- `RadLimit` now has `recordDate` (unique per district/date) instead of `month`/`year`. Migration `20261015000000_rad_limits_daily` converts existing rows.
+- The RAD page uses a single date filter (default yesterday) and a date field in the form. The report uses each district's latest snapshot from the start of the report month up to the report date; the dashboard does the same for the current month up to today.
+- Files changed: `backend/prisma/schema.prisma`, `backend/prisma/migrations/20261015000000_rad_limits_daily/migration.sql`, `backend/src/rad-limits.ts`, `backend/src/report.ts`, `backend/src/dashboard.ts`, `frontend/src/RadLimitPage.tsx`, `context/PROGRESS.md`.
+- Verification: `npx prisma validate`, `npx prisma generate`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. The migration has not been applied to the database yet. Not checked in a browser.
+
+### RAD limits - Prefill from the previous record (completed)
+
+- New `GET /api/rad-limits/districts/:districtId/previous?date=` (write access) returns the district's latest record before the date. When adding a record, the form prefills the monthly limit from it and the rejected count too if it is in the same month (otherwise 0); changing the date in the form refreshes the prefill. Values stay editable.
+- Files changed: `backend/src/rad-limits.ts`, `frontend/src/RadLimitPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser; the daily RAD migration is still pending.

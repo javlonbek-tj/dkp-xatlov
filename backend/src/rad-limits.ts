@@ -19,12 +19,15 @@ function parseInteger(value: unknown, field: string, minimum: number, maximum: n
   return value;
 }
 
-function parseQueryInteger(value: unknown, field: string, minimum: number, maximum: number): number | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new ApiError(400, 'INVALID_FILTER', `${field} must be a whole number`);
+function parseDate(value: unknown): Date {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new ApiError(400, 'INVALID_DATE', 'Date must use YYYY-MM-DD format');
   }
-  return parseInteger(Number(value), field, minimum, maximum);
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new ApiError(400, 'INVALID_DATE', 'Enter a valid date');
+  }
+  return date;
 }
 
 function parsePayload(body: unknown) {
@@ -33,8 +36,7 @@ function parsePayload(body: unknown) {
   }
   const input = body as Record<string, unknown>;
   return {
-    month: parseInteger(input.month, 'month', 1, 12),
-    year: parseInteger(input.year, 'year', 1, 9999),
+    recordDate: parseDate(input.recordDate),
     monthlyLimit: parseInteger(input.monthlyLimit, 'monthlyLimit', 0, 2_147_483_647),
     rejectedApplications: parseInteger(input.rejectedApplications, 'rejectedApplications', 0, 2_147_483_647),
   };
@@ -51,8 +53,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     if ([regionId, districtId].some((value) => value !== undefined && typeof value !== 'string')) {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
-    const month = parseQueryInteger(request.query.month, 'month', 1, 12);
-    const year = parseQueryInteger(request.query.year, 'year', 1, 9999);
+    const date = parseDate(request.query.date);
     const scope = readableDistrictScope(user);
     const locationFilter: Prisma.DistrictWhereInput = {
       ...scope,
@@ -67,17 +68,30 @@ router.get('/', requireAuth, async (request, response, next) => {
     const records = await prisma.radLimit.findMany({
       where: {
         district: locationFilter,
-        ...(month !== undefined ? { month } : {}),
-        ...(year !== undefined ? { year } : {}),
+        recordDate: date,
       },
       include: recordInclude,
-      orderBy: [{ year: 'desc' }, { month: 'desc' }, { district: { name: 'asc' } }],
+      orderBy: { district: { name: 'asc' } },
     });
     response.json({ districts, records: records.map(withRemaining), writableDistrictIds: await writableDistrictIds(user, true) });
   } catch (error) { next(error); }
 });
 
-router.post('/districts/:districtId', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
+// Latest record before the given date, used to prefill a new record.
+router.get('/districts/:districtId/previous', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
+  try {
+    const districtId = request.params.districtId;
+    if (typeof districtId !== 'string') throw new ApiError(400, 'INVALID_DISTRICT', 'A single district ID is required');
+    const record = await prisma.radLimit.findFirst({
+      where: { districtId, recordDate: { lt: parseDate(request.query.date) } },
+      orderBy: { recordDate: 'desc' },
+      select: { recordDate: true, monthlyLimit: true, rejectedApplications: true },
+    });
+    response.json({ record });
+  } catch (error) { next(error); }
+});
+
+router.post('/districts/:districtId',requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
   try {
     const districtId = request.params.districtId;
     if (typeof districtId !== 'string') throw new ApiError(400, 'INVALID_DISTRICT', 'A single district ID is required');
@@ -85,7 +99,7 @@ router.post('/districts/:districtId', requireAuth, requireDistrictAccess('write'
     response.status(201).json({ record: withRemaining(record) });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      next(new ApiError(409, 'DUPLICATE_RAD_LIMIT', 'A limit already exists for this district and month'));
+      next(new ApiError(409, 'DUPLICATE_RAD_LIMIT', 'A RAD record already exists for this district and date'));
     } else next(error);
   }
 });
@@ -101,7 +115,7 @@ router.patch('/districts/:districtId/records/:recordId', requireAuth, requireDis
     response.json({ record: withRemaining(updated) });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      next(new ApiError(409, 'DUPLICATE_RAD_LIMIT', 'A limit already exists for this district and month'));
+      next(new ApiError(409, 'DUPLICATE_RAD_LIMIT', 'A RAD record already exists for this district and date'));
     } else next(error);
   }
 });
