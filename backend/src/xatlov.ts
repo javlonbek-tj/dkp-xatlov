@@ -59,16 +59,16 @@ router.get('/', requireAuth, async (request, response, next) => {
     const user = request.auth!;
     const regionId = request.query.regionId;
     const districtId = request.query.districtId;
-    const from = request.query.from;
-    const to = request.query.to;
-    if ([regionId, districtId, from, to].some((value) => value !== undefined && typeof value !== 'string')) {
+    if ([regionId, districtId].some((value) => value !== undefined && typeof value !== 'string')) {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
-    const startDate = from ? parseDate(from) : undefined;
-    const endDate = to ? parseDate(to) : undefined;
-    if (startDate && endDate && startDate > endDate) {
-      throw new ApiError(400, 'INVALID_FILTER', 'The start date must not be after the end date');
-    }
+    const date = parseDate(request.query.date);
+    // Weekly totals cover Monday to Friday of the selected date's week, up to the selected date.
+    const weekStart = new Date(date);
+    weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    const friday = new Date(weekStart);
+    friday.setUTCDate(weekStart.getUTCDate() + 4);
+    const weekEnd = date < friday ? date : friday;
     const scope = readableDistrictScope(user);
     const authorizedDistricts: Prisma.DistrictWhereInput = { ...scope };
     const locationFilter: Prisma.DistrictWhereInput = {
@@ -81,12 +81,27 @@ router.get('/', requireAuth, async (request, response, next) => {
       orderBy: [{ region: { name: 'asc' } }, { name: 'asc' }],
       include: districtInclude,
     });
-    const recordWhere: Prisma.XatlovRecordWhereInput = {
-      district: locationFilter,
-      ...(startDate || endDate ? { recordDate: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } } : {}),
-    };
-    const records = await prisma.xatlovRecord.findMany({ where: recordWhere, include: recordInclude, orderBy: [{ recordDate: 'desc' }, { district: { name: 'asc' } }] });
-    response.json({ districts, records, writableDistrictIds: await writableDistrictIds(user, true) });
+    const [records, weekly] = await Promise.all([
+      prisma.xatlovRecord.findMany({ where: { district: locationFilter, recordDate: date }, include: recordInclude, orderBy: { district: { name: 'asc' } } }),
+      prisma.xatlovRecord.groupBy({
+        by: ['districtId'],
+        where: { district: locationFilter, recordDate: { gte: weekStart, lte: weekEnd } },
+        _sum: { censusCount: true, migrationCount: true },
+        _count: { _all: true },
+      }),
+    ]);
+    const weeklyByDistrict = new Map(weekly.map((item) => [item.districtId, { ...item._sum, days: item._count._all }]));
+    response.json({
+      districts,
+      records: records.map((record) => ({
+        ...record,
+        weeklyCensusCount: weeklyByDistrict.get(record.districtId)?.censusCount ?? 0,
+        weeklyMigrationCount: weeklyByDistrict.get(record.districtId)?.migrationCount ?? 0,
+        // Days worked this week = days with a saved record from Monday on.
+        weeklyDays: weeklyByDistrict.get(record.districtId)?.days ?? 0,
+      })),
+      writableDistrictIds: await writableDistrictIds(user, true),
+    });
   } catch (error) { next(error); }
 });
 

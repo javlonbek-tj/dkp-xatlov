@@ -17,6 +17,7 @@ type RecordRow = {
   id: string; districtId: string; recordDate: string; completedMfyCount: number; censusCount: number; completedObjectCount: number | null; migrationCount: number
   paymentDebt: string | null
   completedMfyNames: string[]; district: District
+  weeklyCensusCount: number; weeklyMigrationCount: number; weeklyDays: number
 }
 type ApiData = { districts: District[]; records: RecordRow[]; writableDistrictIds: string[] | null }
 type Values = {
@@ -25,6 +26,12 @@ type Values = {
   paymentDebt: number | null
   completedMfyNames: string
 }
+
+// Migration per Xatlov employee per worked day of the week.
+function perEmployeeDay(migration: number, employeeDays: number) {
+  return employeeDays > 0 ? Math.round((migration / employeeDays) * 100) / 100 : null
+}
+const employeeDays = (row: RecordRow) => row.weeklyDays * (row.district.xatlovEmployeeCount ?? 0)
 
 function employeeCell(user?: { fullName: string; phone?: string | null }) {
   if (!user) return '—'
@@ -37,7 +44,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: RecordRow } | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, from: undefined as string | undefined, to: undefined as string | undefined })
+  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
@@ -45,11 +52,9 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
 
   const load = useCallback(async () => {
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ date: filters.date.format('YYYY-MM-DD') })
       if (filters.regionId) params.set('regionId', filters.regionId)
       if (filters.districtId) params.set('districtId', filters.districtId)
-      if (filters.from) params.set('from', filters.from)
-      if (filters.to) params.set('to', filters.to)
       const response = await fetch(`/api/xatlov?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error?.message ?? 'Ma’lumotlarni yuklab bo‘lmadi')
@@ -72,11 +77,18 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       recordDate: dayjs(record.recordDate),
       paymentDebt: record.paymentDebt === null ? null : Number(record.paymentDebt),
       completedMfyNames: record.completedMfyNames.join('\n'),
-    } : { recordDate: undefined, completedMfyCount: 0, censusCount: 0, completedObjectCount: 0, migrationCount: 0, paymentDebt: null, completedMfyNames: '' })
+    } : { recordDate: filters.date, completedMfyCount: 0, censusCount: 0, completedObjectCount: 0, migrationCount: 0, paymentDebt: null, completedMfyNames: '' })
   }
 
   // Totals for the visible rows; employee counts are per district, so each district is counted once.
   const visibleDistricts = [...new Map(visibleRecords.map((row) => [row.districtId, row.district])).values()]
+  // The three rows with the lowest migration per employee per day are highlighted in red.
+  const worstPerEmployee = new Set(visibleRecords
+    .map((row) => ({ id: row.id, value: perEmployeeDay(row.weeklyMigrationCount, employeeDays(row)) }))
+    .filter((item) => item.value !== null)
+    .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))
+    .slice(0, 3)
+    .map((item) => item.id))
   const totals = {
     engineers: visibleDistricts.reduce((sum, item) => sum + (item.engineerCount ?? 0), 0),
     xatlovEmployees: visibleDistricts.reduce((sum, item) => sum + (item.xatlovEmployeeCount ?? 0), 0),
@@ -84,6 +96,9 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     census: visibleRecords.reduce((sum, row) => sum + Math.max(row.censusCount, 0), 0),
     completedObjects: visibleRecords.reduce((sum, row) => sum + (row.completedObjectCount ?? 0), 0),
     migration: visibleRecords.reduce((sum, row) => sum + row.migrationCount, 0),
+    weeklyCensus: visibleRecords.reduce((sum, row) => sum + row.weeklyCensusCount, 0),
+    weeklyMigration: visibleRecords.reduce((sum, row) => sum + row.weeklyMigrationCount, 0),
+    employeeDays: visibleRecords.reduce((sum, row) => sum + employeeDays(row), 0),
   }
   const summary = () => visibleRecords.length ? <Table.Summary fixed="top">
     <Table.Summary.Row className="font-semibold [&>td]:!bg-slate-100">
@@ -95,29 +110,34 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       <Table.Summary.Cell index={6} align="center">{totals.census.toLocaleString('ru-RU')}</Table.Summary.Cell>
       <Table.Summary.Cell index={7} align="center">{totals.completedObjects.toLocaleString('ru-RU')}</Table.Summary.Cell>
       <Table.Summary.Cell index={8} align="center"><Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{totals.migration.toLocaleString('ru-RU')}</Tag></Table.Summary.Cell>
-      <Table.Summary.Cell index={9} colSpan={canWrite ? 3 : 2} />
+      <Table.Summary.Cell index={9} align="center">{totals.weeklyCensus.toLocaleString('ru-RU')}</Table.Summary.Cell>
+      <Table.Summary.Cell index={10} align="center"><Tag color="purple" className="!m-0 min-w-10 text-center !font-semibold">{totals.weeklyMigration.toLocaleString('ru-RU')}</Tag></Table.Summary.Cell>
+      <Table.Summary.Cell index={11} align="center">{perEmployeeDay(totals.weeklyMigration, totals.employeeDays)?.toLocaleString('ru-RU') ?? '—'}</Table.Summary.Cell>
+      <Table.Summary.Cell index={12} colSpan={canWrite ? 3 : 2} />
     </Table.Summary.Row>
   </Table.Summary> : null
 
   // Same layout as the table: grouped headers and the totals row first.
   function exportTable() {
-    void exportExcel('xatlov.xlsx', [
+    void exportExcel(`xatlov-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
       'Hudud', 'Tuman',
       'Respublika vakili', 'Viloyat vakili',
       { title: 'Xodimlar', children: ['Jami', 'Xatlovda'] },
       { title: 'Natijalar', children: ['Tugallangan MFY', 'Xatlov soni', 'Yakunlangan obyekt', 'Migratsiya soni'] },
+      { title: 'Haftalik (Du–Ju)', children: ['Xatlov soni', 'Migratsiya soni', '1 xodimga kunlik migratsiya'] },
       'Tugallangan MFY nomlari', 'Sana',
     ], [
-      ['Jami', `${visibleDistricts.length} ta tuman`, '', '', totals.engineers, totals.xatlovEmployees, totals.completedMfy, totals.census, totals.completedObjects, totals.migration, '', ''],
+      ['Jami', `${visibleDistricts.length} ta tuman`, '', '', totals.engineers, totals.xatlovEmployees, totals.completedMfy, totals.census, totals.completedObjects, totals.migration, totals.weeklyCensus, totals.weeklyMigration, perEmployeeDay(totals.weeklyMigration, totals.employeeDays), '', ''],
       ...visibleRecords.map((row) => [
         row.district.region.name, row.district.name,
         employeeText(row.district.republicEmployeeAssignment?.user),
         employeeText(row.district.regionalEmployeeAssignment?.user),
         row.district.engineerCount, row.district.xatlovEmployeeCount,
         row.completedMfyCount, row.censusCount, row.completedObjectCount, row.migrationCount,
+        row.weeklyCensusCount, row.weeklyMigrationCount, perEmployeeDay(row.weeklyMigrationCount, employeeDays(row)),
         row.completedMfyNames.join(', '), dayjs(row.recordDate.slice(0, 10)).format('DD.MM.YYYY'),
       ]),
-    ], { totalRows: 1 })
+    ], { totalRows: 1, highlight: (row, column) => column === 12 && row > 0 && worstPerEmployee.has(visibleRecords[row - 1].id) })
   }
 
   const columns: ColumnsType<RecordRow> = [
@@ -131,8 +151,13 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     { title: 'Natijalar', children: [
       { title: 'Tugallangan MFY', dataIndex: 'completedMfyCount', width: 130, align: 'center' },
       { title: 'Xatlov soni', dataIndex: 'censusCount', width: 100, align: 'center', render: (value: number) => <span className={value < 0 ? 'text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
-      { title: 'Yakunlangan obyekt', dataIndex: 'completedObjectCount', width: 130, align: 'center', render: (value: number | null) => value?.toLocaleString('ru-RU') ?? '—' },
+      { title: <span className="leading-tight">Yakunlangan<br />obyekt</span>, dataIndex: 'completedObjectCount', width: 130, align: 'center', render: (value: number | null) => value?.toLocaleString('ru-RU') ?? '—' },
       { title: 'Migratsiya soni', dataIndex: 'migrationCount', width: 120, align: 'center', render: (value: number) => <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{value.toLocaleString('ru-RU')}</Tag> },
+    ] },
+    { title: 'Haftalik (Du–Ju)', children: [
+      { title: 'Xatlov soni', dataIndex: 'weeklyCensusCount', width: 100, align: 'center', render: (value: number) => <span className={value < 0 ? 'text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
+      { title: 'Migratsiya soni', dataIndex: 'weeklyMigrationCount', width: 120, align: 'center', render: (value: number) => <Tag color="purple" className="!m-0 min-w-10 text-center !font-semibold">{value.toLocaleString('ru-RU')}</Tag> },
+      { title: <span className="leading-tight">1 xodimga kunlik<br />migratsiya</span>, key: 'migrationPerEmployeeDay', width: 140, onCell: (row) => worstPerEmployee.has(row.id) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}, align: 'center', render: (_, row) => perEmployeeDay(row.weeklyMigrationCount, employeeDays(row))?.toLocaleString('ru-RU') ?? '—' },
     ] },
     { title: 'Tugallangan MFY nomlari', key: 'completedMfyNames', width: 220, ellipsis: true, render: (_, row) => row.completedMfyNames.join(', ') || '—' },
     { title: 'Sana', dataIndex: 'recordDate', width: 110, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
@@ -165,10 +190,9 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
-      <DatePicker placeholder="Sanadan" onChange={(value) => setFilters((old) => ({ ...old, from: value?.format('YYYY-MM-DD') }))} />
-      <DatePicker placeholder="Sanagacha" onChange={(value) => setFilters((old) => ({ ...old, to: value?.format('YYYY-MM-DD') }))} />
+      <DatePicker allowClear={false} value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1670 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2030 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save}>

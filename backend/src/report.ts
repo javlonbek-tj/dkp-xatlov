@@ -57,14 +57,26 @@ router.get('/', requireAuth, async (request, response, next) => {
       }),
     ]);
     const ids = districts.map((district) => district.id);
+    // Weekly migration covers Monday to Friday of the report date's week, up to the report date.
+    const weekStart = new Date(date);
+    weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    const friday = new Date(weekStart);
+    friday.setUTCDate(weekStart.getUTCDate() + 4);
+    const weekEnd = date < friday ? date : friday;
     const month = date.getUTCMonth() + 1;
     const year = date.getUTCFullYear();
 
-    const [xatlovRecords, radLimits, overdue] = await Promise.all([
+    const [xatlovRecords, weeklyXatlov, radLimits, overdue] = await Promise.all([
       prisma.xatlovRecord.findMany({
         where: { districtId: { in: ids }, recordDate: { lte: date } },
         orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
         distinct: ['districtId'],
+      }),
+      prisma.xatlovRecord.groupBy({
+        by: ['districtId'],
+        where: { districtId: { in: ids }, recordDate: { gte: weekStart, lte: weekEnd } },
+        _sum: { migrationCount: true },
+        _count: { _all: true },
       }),
       prisma.radLimit.findMany({ where: { districtId: { in: ids }, month, year } }),
       prisma.overdueSnapshot.findMany({
@@ -76,6 +88,7 @@ router.get('/', requireAuth, async (request, response, next) => {
 
     const rows = districts.map((district) => {
       const xatlov = xatlovRecords.find((record) => record.districtId === district.id);
+      const weekly = weeklyXatlov.find((item) => item.districtId === district.id);
       const rad = radLimits.find((limit) => limit.districtId === district.id);
       const stages = overdue.find((snapshot) => snapshot.districtId === district.id);
       return {
@@ -95,6 +108,9 @@ router.get('/', requireAuth, async (request, response, next) => {
           migrationCount: xatlov.migrationCount,
           paymentDebt: xatlov.paymentDebt === null ? null : xatlov.paymentDebt.toNumber(),
         } : null,
+        weeklyMigrationCount: weekly?._sum.migrationCount ?? null,
+        // Days worked this week = days with a saved record from Monday on.
+        weeklyDays: weekly?._count._all ?? 0,
         rad: rad ? { monthlyLimit: rad.monthlyLimit, rejectedApplications: rad.rejectedApplications } : null,
         overdue15to30: stages?.stage15to30 ?? 0,
         overdueOver30: (stages?.stage31to90 ?? 0) + (stages?.stage90plus ?? 0),

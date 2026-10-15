@@ -154,3 +154,40 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Added `@ant-design/icons` (already installed as an antd dependency) to `package.json`.
 - Files changed: `frontend/index.html`, `frontend/package.json`, `frontend/package-lock.json`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/src/App.tsx`, `frontend/src/AppLayout.tsx` (new), `frontend/src/AdminPanel.tsx`, `frontend/src/DashboardPage.tsx`, `frontend/src/XatlovPage.tsx`, `frontend/src/MkdPage.tsx`, `frontend/src/RadLimitPage.tsx`, `frontend/src/OverdueApplicationsPage.tsx`, `frontend/src/CallLogPage.tsx`, `context/PROGRESS.md`.
 - Verification: `npx tsc -b`, `npm run lint`, and `npm run build` passed (existing large-bundle warning remains). Not visually checked in a browser.
+
+### Xatlov page - Single date filter and weekly totals (completed)
+
+- Replaced the "Sanadan"/"Sanagacha" filters with a single date picker (same as the report page), defaulting to yesterday. The API now requires `date` and returns that date's records.
+- Added a "Haftalik (Du–Ju)" column group with weekly census and migration totals per district, summed from Monday to Friday of the selected date's week (up to the selected date). Other columns stay daily values. The weekly columns are included in the totals row and the Excel export.
+- Files changed: `backend/src/xatlov.ts`, `frontend/src/XatlovPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. No automated tests were added or run. Not checked in a browser.
+
+### Report page - Weekly migration column (completed)
+
+- Added a "Du–Ju" column next to "bir kunda" in the report: each district's migration total from Monday to Friday of the report date's week (up to the report date). It is included in the region total row and the Excel export; export highlight column positions were shifted accordingly.
+- Files changed: `backend/src/report.ts`, `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. No automated tests were added or run. Not checked in a browser.
+
+### Xatlov and report - Migration per employee per day (completed)
+
+- Added "1 xodimga kunlik migratsiya" (Xatlov page) and "1 xodimga kunlik" (report, next to "Du–Ju"): Monday–Friday migration total ÷ days worked this week ÷ Xatlov employee count, rounded to 2 decimals. Days worked = the district's saved Xatlov records from Monday up to the selected date. Total rows use total migration ÷ Σ(days × employees). Both Excel exports include the new column; report export highlight positions were shifted.
+- Files changed: `backend/src/xatlov.ts`, `backend/src/report.ts`, `frontend/src/XatlovPage.tsx`, `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. No automated tests were added or run. Not checked in a browser.
+
+### Xatlov and report - Lowest per-employee migration highlighted (completed)
+
+- The three districts with the lowest "1 xodimga kunlik" value (empty values ignored) are highlighted in red on the Xatlov page and in the report, including both Excel exports.
+- Files changed: `frontend/src/XatlovPage.tsx`, `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b` and `npm run lint` passed. No automated tests were added or run. Not checked in a browser.
+
+### Report - Badge key migration columns (completed)
+
+- "bir kunda" (blue) and "Du–Ju" (purple) values are shown as badges in the report table, like the Xatlov page. Excel export is unchanged.
+- Files changed: `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### Overdue applications - Single date filter (completed)
+
+- Replaced "Sanadan"/"Sanagacha" with a single date picker defaulting to yesterday; the API now requires `date` and returns that date's snapshots. New records default to the selected date; the export filename includes the date.
+- Files changed: `backend/src/overdue-applications.ts`, `frontend/src/OverdueApplicationsPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.

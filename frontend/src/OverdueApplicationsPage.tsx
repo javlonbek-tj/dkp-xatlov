@@ -34,7 +34,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: OverdueRecord } | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, from: undefined as string | undefined, to: undefined as string | undefined })
+  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
   const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
@@ -45,8 +45,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
       const params = new URLSearchParams()
       if (filters.regionId) params.set('regionId', filters.regionId)
       if (filters.districtId) params.set('districtId', filters.districtId)
-      if (filters.from) params.set('from', filters.from)
-      if (filters.to) params.set('to', filters.to)
+      params.set('date', filters.date.format('YYYY-MM-DD'))
       const response = await fetch(`/api/overdue-applications?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error?.message ?? 'Ma’lumotlarni yuklab bo‘lmadi')
@@ -73,7 +72,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
     setEditor({ districtId, record })
     form.setFieldsValue(record
       ? { ...record, recordDate: dayjs(record.recordDate.slice(0, 10)) }
-      : { recordDate: dayjs(), ...Object.fromEntries(stages.map((stage) => [stage.field, 0])) })
+      : { recordDate: filters.date, ...Object.fromEntries(stages.map((stage) => [stage.field, 0])) })
   }
 
   const columns: ColumnsType<OverdueRecord> = [
@@ -109,14 +108,13 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear showSearch optionFilterProp="label" placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
-      <DatePicker placeholder="Sanadan" onChange={(value) => setFilters((old) => ({ ...old, from: value?.format('YYYY-MM-DD') }))} />
-      <DatePicker placeholder="Sanagacha" onChange={(value) => setFilters((old) => ({ ...old, to: value?.format('YYYY-MM-DD') }))} />
+      <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
     <Card loading={loading}>
       <div className="mb-4 flex flex-wrap justify-between gap-3">
         <Input.Search allowClear placeholder="Tuman yoki vakil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} />
         <Space>
-          <Button onClick={() => void exportExcel('muddati-otgan-arizalar.xlsx', [
+          <Button onClick={() => void exportExcel(`muddati-otgan-arizalar-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
             'Hudud', 'Tuman', 'Respublika vakili', 'Viloyat vakili',
             { title: 'Kechikish bosqichlari', children: stages.map((stage) => stage.label) },
             'Jami', 'Sana',

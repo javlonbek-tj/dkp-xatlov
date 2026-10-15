@@ -49,15 +49,11 @@ function duplicateError(error: unknown, next: express.NextFunction) {
 router.get('/', requireAuth, async (request, response, next) => {
   try {
     const user = request.auth!;
-    const { regionId, districtId, from, to } = request.query;
-    if ([regionId, districtId, from, to].some((value) => value !== undefined && typeof value !== 'string')) {
+    const { regionId, districtId } = request.query;
+    if ([regionId, districtId].some((value) => value !== undefined && typeof value !== 'string')) {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
-    const startDate = from ? parseDate(from, 'Start date') : undefined;
-    const endDate = to ? parseDate(to, 'End date') : undefined;
-    if (startDate && endDate && startDate > endDate) {
-      throw new ApiError(400, 'INVALID_FILTER', 'The start date must not be after the end date');
-    }
+    const date = parseDate(request.query.date, 'Date');
     const scope = readableDistrictScope(user);
     const districts = await prisma.district.findMany({
       where: scope,
@@ -67,7 +63,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const records = await prisma.overdueSnapshot.findMany({
       where: {
         district: { ...scope, ...(regionId ? { regionId: regionId as string } : {}), ...(districtId ? { id: districtId as string } : {}) },
-        ...(startDate || endDate ? { recordDate: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } } : {}),
+        recordDate: date,
       },
       include: recordInclude,
       orderBy: [{ recordDate: 'desc' }, { district: { name: 'asc' } }],

@@ -17,6 +17,8 @@ type ReportRow = {
   objectCount: number | null
   mfyCount: number | null
   xatlov: { recordDate: string; completedMfyCount: number; censusCount: number; completedObjectCount: number | null; migrationCount: number; paymentDebt: number | null } | null
+  weeklyMigrationCount: number | null
+  weeklyDays: number
   rad: { monthlyLimit: number; rejectedApplications: number } | null
   overdue15to30: number
   overdueOver30: number
@@ -41,6 +43,9 @@ type Line = {
   completedMfyCount: number | null
   censusCount: number | null
   dailyCompletedObjects: number | null
+  weeklyMigration: number | null
+  employeeDays: number | null
+  migrationPerEmployeeDay: number | null
   radPlan: number | null
   radActual: number | null
   radPercent: number | null
@@ -53,8 +58,13 @@ type Line = {
 const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
 const summedFields = [
   'engineerCount', 'xatlovEmployeeCount', 'objectCount', 'mfyCount', 'completedMfyCount', 'censusCount',
-  'dailyCompletedObjects', 'radPlan', 'radActual', 'overdue15to30', 'overdueOver30', 'paymentDebt',
+  'dailyCompletedObjects', 'weeklyMigration', 'employeeDays', 'radPlan', 'radActual', 'overdue15to30', 'overdueOver30', 'paymentDebt',
 ] as const
+
+// Migration per Xatlov employee per worked day of the week.
+function perEmployeeDay(migration: number | null, employeeDays: number | null) {
+  return migration === null || !employeeDays ? null : Math.round((migration / employeeDays) * 100) / 100
+}
 
 function percent(actual: number | null, plan: number | null) {
   return actual === null || !plan ? null : Math.round((actual / plan) * 100)
@@ -76,6 +86,9 @@ function toLine(row: ReportRow, index: number): Line {
     completedMfyCount: row.xatlov?.completedMfyCount ?? null,
     censusCount: row.xatlov?.completedObjectCount ?? null,
     dailyCompletedObjects: row.xatlov?.migrationCount ?? null,
+    weeklyMigration: row.weeklyMigrationCount,
+    employeeDays: row.weeklyDays && row.xatlovEmployeeCount ? row.weeklyDays * row.xatlovEmployeeCount : null,
+    migrationPerEmployeeDay: perEmployeeDay(row.weeklyMigrationCount, row.weeklyDays * (row.xatlovEmployeeCount ?? 0)),
     radPlan,
     radActual,
     radPercent: percent(radActual, radPlan),
@@ -92,6 +105,7 @@ function totalLine(lines: Line[], region: NonNullable<ReportData['region']>): Li
     const values = lines.map((line) => line[field]).filter((value): value is number => value !== null)
     ;(total[field] as number | null) = values.length ? values.reduce((sum, value) => sum + value, 0) : null
   }
+  total.migrationPerEmployeeDay = perEmployeeDay(total.weeklyMigration, total.employeeDays)
   total.radPercent = percent(total.radActual, total.radPlan)
   total.radRemainder = total.radPlan === null || total.radActual === null ? null : total.radActual - total.radPlan
   return total
@@ -146,12 +160,24 @@ function ReportPage({ token }: { token: string; user: User }) {
     .map((line) => line.key))
   // A limit of zero with rejected applications counts as the worst usage.
   const worstRad = topThree((line) => line.radPlan ? (line.radActual ?? 0) / line.radPlan : (line.radActual ?? 0) > 0 ? Infinity : null)
+  // The three districts with the lowest migration per employee per day (empty values are ignored).
+  const worstPerEmployee = new Set(districtLines
+    .filter((line) => line.migrationPerEmployeeDay !== null)
+    .sort((a, b) => (a.migrationPerEmployeeDay ?? 0) - (b.migrationPerEmployeeDay ?? 0))
+    .slice(0, 3)
+    .map((line) => line.key))
   const worstOverdue15to30 = topThree((line) => line.overdue15to30)
   const worstOverdueOver30 = topThree((line) => line.overdueOver30)
   const redCell = (keys: Set<string>) => (line: Line) => keys.has(line.key) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}
   const number = (field: keyof Line, title: string, highlight?: Set<string>) => ({
     title, align: 'center' as const, render: (_: unknown, line: Line) => formatNumber(line[field] as number | null),
     ...(highlight ? { onCell: redCell(highlight) } : {}),
+  })
+
+  // Key columns are shown as badges.
+  const badge = (field: keyof Line, title: string, color: string) => ({
+    title, align: 'center' as const,
+    render: (_: unknown, line: Line) => line[field] === null ? '—' : <Tag color={color} className="!m-0 min-w-10 text-center !font-semibold">{formatNumber(line[field] as number)}</Tag>,
   })
 
   const columns: ColumnsType<Line> = [
@@ -177,7 +203,7 @@ function ReportPage({ token }: { token: string; user: User }) {
           render: (_: unknown, line: Line) => line.completedMfyCount === null ? '—' : <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{formatNumber(line.completedMfyCount)}</Tag>,
         },
         number('censusCount', 'Xatlov yakunlangan obyekt'),
-        { title: 'shundan', children: [number('dailyCompletedObjects', 'bir kunda')] },
+        { title: 'shundan', children: [badge('dailyCompletedObjects', 'bir kunda', 'blue'), badge('weeklyMigration', 'Du–Ju', 'purple'), number('migrationPerEmployeeDay', '1 xodimga kunlik', worstPerEmployee)] },
       ],
     },
     {
@@ -197,7 +223,7 @@ function ReportPage({ token }: { token: string; user: User }) {
 
   function exportReport() {
     // Leaf column positions of the red-highlighted cells, matching the table.
-    const radColumns = [11, 12, 13, 14]
+    const radColumns = [13, 14, 15, 16]
     void exportExcel(`hisobot-${date.format('YYYY-MM-DD')}.xlsx`, [
       'T/r', 'Hudud nomi',
       'Respublika vakili', 'Viloyat vakili',
@@ -206,7 +232,7 @@ function ReportPage({ token }: { token: string; user: User }) {
           'Jami xodimlar soni',
           { title: 'shundan', children: ['xatlovga biriktirilgan xodimlar soni'] },
           'Jami obyektlar soni', 'Jami MFY soni', 'Yakunlangan MFY soni', 'Xatlov yakunlangan obyekt',
-          { title: 'shundan', children: ['bir kunda'] },
+          { title: 'shundan', children: ['bir kunda', 'Du–Ju', '1 xodimga kunlik'] },
         ],
       },
       {
@@ -222,15 +248,16 @@ function ReportPage({ token }: { token: string; user: User }) {
       line.index === null ? `Bosh vakil — ${line.leader ?? ''}` : employeeText(line.republic),
       employeeText(line.regional),
       line.engineerCount, line.xatlovEmployeeCount, line.objectCount, line.mfyCount, line.completedMfyCount,
-      line.censusCount, line.dailyCompletedObjects, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
+      line.censusCount, line.dailyCompletedObjects, line.weeklyMigration, line.migrationPerEmployeeDay, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
       line.overdue15to30, line.overdueOver30, line.paymentDebt,
     ]), {
       totalRows: 1,
       highlight: (row, column) => {
         const key = lines[row].key
-        return (radColumns.includes(column) && worstRad.has(key))
-          || (column === 15 && worstOverdue15to30.has(key))
-          || (column === 16 && worstOverdueOver30.has(key))
+        return (column === 12 && worstPerEmployee.has(key))
+          || (radColumns.includes(column) && worstRad.has(key))
+          || (column === 17 && worstOverdue15to30.has(key))
+          || (column === 18 && worstOverdueOver30.has(key))
       },
     })
   }
