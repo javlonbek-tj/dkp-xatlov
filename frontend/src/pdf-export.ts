@@ -17,13 +17,11 @@ function formatValue(value: ExportValue) {
   return escape(value).replace(/\n/g, '<br>')
 }
 
-// A4 landscape with 8 mm margins; the page is laid out at a fixed CSS width and scaled onto the paper.
+// A4 landscape with 8 mm margins; the page is laid out at a CSS width (wider if the table needs it) and scaled onto the paper.
 const pageWidthMm = 297
 const pageHeightMm = 210
 const marginMm = 8
 const contentWidthPx = 1062
-const pxToMm = (pageWidthMm - 2 * marginMm) / contentWidthPx
-const pageHeightPx = (pageHeightMm - 2 * marginMm) / pxToMm
 const scale = 3
 
 // Downloads the table as an A4 landscape PDF. The table is rendered to an image in a hidden frame and split into pages
@@ -35,7 +33,8 @@ export async function exportPdf(filename: string, headers: ExportHeader[], rows:
   // Plain titles span down to the last header row; group titles span their children's columns.
   function place(header: ExportHeader, level: number) {
     if (typeof header === 'string') {
-      headerLines[level].push(`<th rowspan="${headerDepth - level}">${escape(header)}</th>`)
+      // Single-word titles (e.g. "T/r") stay on one line.
+      headerLines[level].push(`<th rowspan="${headerDepth - level}"${header.includes(' ') ? '' : ' class="word"'}>${escape(header)}</th>`)
       return
     }
     headerLines[level].push(`<th colspan="${width(header)}">${escape(header.title)}</th>`)
@@ -56,17 +55,19 @@ export async function exportPdf(filename: string, headers: ExportHeader[], rows:
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     * { box-sizing: border-box; }
     html { background: #fff; }
-    body { margin: 0; width: ${contentWidthPx}px; font-family: Arial, Helvetica, sans-serif; color: #0f172a; }
-    h1 { margin: 0; font-size: 12pt; text-align: center; color: #991b1b; }
-    h2 { margin: 2pt 0 0; font-size: 12pt; text-align: center; color: #1e3a8a; letter-spacing: 2pt; }
-    .note { margin: 2pt 0 4pt; font-size: 7pt; font-style: italic; text-align: right; }
+    /* Fixed pixel line heights: with "normal" line height html2canvas draws text lower than the browser on some systems. */
+    body { margin: 0; width: ${contentWidthPx}px; font-family: Arial, Helvetica, sans-serif; color: #0f172a; font-size: 9px; line-height: 12px; }
+    h1 { margin: 0; font-size: 16px; line-height: 22px; text-align: center; color: #991b1b; }
+    h2 { margin: 2px 0 0; font-size: 16px; line-height: 22px; text-align: center; color: #1e3a8a; letter-spacing: 3px; }
+    .note { margin: 2px 0 5px; font-size: 9px; line-height: 12px; font-style: italic; text-align: right; }
     /* Each cell draws only its right and bottom border, so lines are not doubled in the image. */
-    table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 6.5pt; border-top: 1px solid #64748b; border-left: 1px solid #64748b; }
-    th, td { border-right: 1px solid #64748b; border-bottom: 1px solid #64748b; padding: 1.5pt 2pt; vertical-align: middle; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 9px; line-height: 12px; border-top: 1px solid #64748b; border-left: 1px solid #64748b; }
+    th, td { border-right: 1px solid #64748b; border-bottom: 1px solid #64748b; padding: 3px 3px; vertical-align: middle; line-height: 12px; }
+    th.word { white-space: nowrap; }
     th { background: #dbeafe; color: #1e3a8a; font-weight: 700; text-align: center; }
     td.num { text-align: center; white-space: nowrap; }
     td.lines { white-space: nowrap; }
-    tr.total td { background: #e0f2fe; font-weight: 700; font-size: 7pt; }
+    tr.total td { background: #e0f2fe; font-weight: 700; font-size: 9.5px; }
     td.red { background: #fee2e2; color: #dc2626; font-weight: 700; }
   </style></head><body>
     ${title ? `${title.lines.map((line, index) => index === 0 ? `<h1>${escape(line)}</h1>` : `<h2>${escape(line)}</h2>`).join('')}${title.note ? `<div class="note">${escape(title.note)}</div>` : ''}` : ''}
@@ -88,7 +89,13 @@ export async function exportPdf(filename: string, headers: ExportHeader[], rows:
     doc.write(html)
     doc.close()
     await doc.fonts.ready
-    const canvas = await html2canvas(doc.body, { scale, backgroundColor: '#ffffff', windowWidth: contentWidthPx, logging: false })
+    // Widen the page to the table so the title stays centred over it.
+    const widthPx = Math.max(contentWidthPx, Math.ceil(doc.querySelector('table')!.scrollWidth))
+    frame.style.width = `${widthPx}px`
+    doc.body.style.width = `${widthPx}px`
+    const pxToMm = (pageWidthMm - 2 * marginMm) / widthPx
+    const pageHeightPx = (pageHeightMm - 2 * marginMm) / pxToMm
+    const canvas = await html2canvas(doc.body, { scale, backgroundColor: '#ffffff', width: widthPx, windowWidth: widthPx, logging: false })
 
     // Positions in CSS pixels from the top of the page.
     const totalHeight = doc.body.scrollHeight
@@ -119,7 +126,7 @@ export async function exportPdf(filename: string, headers: ExportHeader[], rows:
         y += partHeight
       }
       if (index) pdf.addPage()
-      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', marginMm, marginMm, contentWidthPx * pxToMm, height * pxToMm)
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', marginMm, marginMm, widthPx * pxToMm, height * pxToMm)
     })
     pdf.save(`${filename}.pdf`)
   } finally {

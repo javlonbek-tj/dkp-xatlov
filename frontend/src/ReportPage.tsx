@@ -182,6 +182,7 @@ function ReportPage({ token }: { token: string; user: User }) {
     .map((line) => line.key))
   const worstOverdue15to30 = topThree((line) => line.overdue15to30)
   const worstOverdueOver30 = topThree((line) => line.overdueOver30)
+  const worstMkd = topThree((line) => line.mkdTotal)
   const redCell = (keys: Set<string>) => (line: Line) => keys.has(line.key) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}
   const number = (field: keyof Line, title: string, highlight?: Set<string>) => ({
     title, align: 'center' as const, render: (_: unknown, line: Line) => formatNumber(line[field] as number | null),
@@ -235,10 +236,10 @@ function ReportPage({ token }: { token: string; user: User }) {
     {
       title: 'MKD (jarayonda)',
       children: [
-        number('mkdTotal', 'Jami'),
+        number('mkdTotal', 'Jami', worstMkd),
         ...(mkdYears.length ? [{
           title: 'shundan',
-          children: mkdYears.map((year) => ({ title: `${year}-yil`, key: `mkd-${year}`, align: 'center' as const, render: (_: unknown, line: Line) => formatNumber(mkdYearValue(line, year)) })),
+          children: mkdYears.map((year) => ({ title: `${year}-yil`, key: `mkd-${year}`, align: 'center' as const, render: (_: unknown, line: Line) => formatNumber(mkdYearValue(line, year)), onCell: redCell(worstMkd) })),
         }] : []),
       ],
     },
@@ -291,6 +292,8 @@ function ReportPage({ token }: { token: string; user: User }) {
           || (radColumns.includes(column) && worstRad.has(key))
           || (column === 17 && worstOverdue15to30.has(key))
           || (column === 18 && worstOverdueOver30.has(key))
+          // MKD "Jami" and the year columns.
+          || (column >= 19 && column <= 19 + mkdYears.length && worstMkd.has(key))
       },
     }
     const filename = `hisobot-${date.format('YYYY-MM-DD')}`

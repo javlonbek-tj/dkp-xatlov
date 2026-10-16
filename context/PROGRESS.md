@@ -240,3 +240,22 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Both exports have the title "“Dolzarb 90 kunlik” doirasida <region> boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida" / "MA’LUMOT" with "<date> y. soat <time>" on the right. `exportExcel` accepts an optional `title` option.
 - Files changed: `frontend/package.json`, `frontend/package-lock.json`, `frontend/src/excel-export.ts`, `frontend/src/pdf-export.ts` (new), `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
 - Verification: Frontend `npx tsc -b`, `npm run lint` and `npm run build` passed. `exportPdf` was run with sample data in headless Chrome: 22 districts fit on one A4 landscape page; 31 rows split into two pages between rows with repeated headers. Not checked inside the running app.
+
+### MKD and report - Top in-progress districts highlighted (completed)
+
+- MKD page: the three districts with the largest in-progress count (summed over the records shown for the selected date and year filter; zero ignored) are highlighted in red, including the Excel export.
+- Report: the three districts with the highest MKD "Jami" are highlighted in red in the "Jami" and year columns, in the table and in the Excel and PDF exports.
+- Files changed: `frontend/src/MkdPage.tsx`, `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### MKD - Default year filter (completed)
+
+- The MKD page now loads all years for the selected date and filters by year on the client. Until the user picks a year, 2024 is shown if any shown district has a non-zero 2024 in-progress count on that date, otherwise 2023. Clearing the year filter shows all years. Totals, the top-3 highlight, the export and the new-record default year follow the shown year.
+- Files changed: `frontend/src/MkdPage.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### Report - PDF text alignment fix (completed)
+
+- On some systems html2canvas drew text lower than the browser, so words touched the cell borders. The PDF page now uses fixed pixel font sizes and line heights, a little more cell padding, and single-word header titles (e.g. "T/r") no longer wrap. The page is widened to the table's real width before rendering, so the title and date stay aligned with the table.
+- Files changed: `frontend/src/pdf-export.ts`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b`, `npm run lint` and `npm run build` passed. `exportPdf` was rerun with sample data in headless Chrome and the output checked visually; the original misalignment could not be reproduced on this machine, so the fix should be confirmed on the machine that showed it.
