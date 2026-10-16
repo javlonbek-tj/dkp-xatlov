@@ -78,6 +78,27 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       paymentDebt: record.paymentDebt === null ? null : Number(record.paymentDebt),
       completedMfyNames: record.completedMfyNames.join('\n'),
     } : { recordDate: filters.date, completedMfyCount: 0, censusCount: 0, completedObjectCount: 0, migrationCount: 0, paymentDebt: null, completedMfyNames: '' })
+    if (!record) void prefill(districtId, filters.date)
+  }
+
+  // A new record starts from the district's previous record so unchanged values need not be typed again.
+  async function prefill(districtId: string, date: Dayjs) {
+    try {
+      const response = await fetch(`/api/xatlov/districts/${districtId}/previous?date=${date.format('YYYY-MM-DD')}`, { headers: { Authorization: `Bearer ${token}` } })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error?.message ?? 'Oldingi ma’lumotni yuklab bo‘lmadi')
+      const previous = result.record as Omit<RecordRow, 'id' | 'districtId' | 'district' | 'weeklyCensusCount' | 'weeklyMigrationCount' | 'weeklyDays'> | null
+      // Ignore the answer if the user has picked another date meanwhile.
+      if (!form.getFieldValue('recordDate')?.isSame(date, 'day')) return
+      form.setFieldsValue({
+        completedMfyCount: previous?.completedMfyCount ?? 0,
+        censusCount: previous?.censusCount ?? 0,
+        completedObjectCount: previous?.completedObjectCount ?? 0,
+        migrationCount: previous?.migrationCount ?? 0,
+        paymentDebt: previous?.paymentDebt == null ? null : Number(previous.paymentDebt),
+        completedMfyNames: previous?.completedMfyNames.join('\n') ?? '',
+      })
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Oldingi ma’lumotni yuklab bo‘lmadi') }
   }
 
   // Totals for the visible rows; employee counts are per district, so each district is counted once.
@@ -195,7 +216,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2030 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
-    <Form form={form} layout="vertical" onFinish={save}>
+    <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>
       <Form.Item label="Sana" name="recordDate" rules={[{ required: true, message: 'Sanani tanlang' }]}><DatePicker className="w-full" /></Form.Item>
       {(['completedMfyCount', 'censusCount', 'completedObjectCount', 'migrationCount'] as const).map((name) => <Form.Item key={name} label={{ completedMfyCount: 'Tugallangan MFY soni', censusCount: 'Xatlov soni', completedObjectCount: 'Xatlov yakunlangan obyekt', migrationCount: 'Migratsiya soni' }[name]} name={name} rules={[{ required: true }]}><InputNumber min={name === 'censusCount' ? undefined : 0} precision={0} className="w-full" /></Form.Item>)}
       <Form.Item label="To‘lov bo‘yicha qarzdorlik (mln so‘m)" name="paymentDebt"><InputNumber min={0} precision={2} className="w-full" /></Form.Item>

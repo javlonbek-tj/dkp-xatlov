@@ -5,6 +5,7 @@ import AdminPanel from './AdminPanel'
 import AssignmentsPage from './AssignmentsPage'
 import ReportPage from './ReportPage'
 import XatlovPage from './XatlovPage'
+import MkdPage from './MkdPage'
 import RadLimitPage from './RadLimitPage'
 import OverdueApplicationsPage from './OverdueApplicationsPage'
 import DashboardPage from './DashboardPage'
@@ -88,6 +89,7 @@ function App() {
           : page === 'assignments' && user.role !== 'REGIONAL_EMPLOYEE' ? <AssignmentsPage {...props} />
           : page === 'report' ? <ReportPage {...props} />
           : page === 'xatlov' ? <XatlovPage {...props} />
+          : page === 'mkd' ? <MkdPage {...props} />
           : page === 'rad' ? <RadLimitPage {...props} />
           : page === 'overdue' ? <OverdueApplicationsPage {...props} />
           : page === 'calls' ? <CallLogPage {...props} />

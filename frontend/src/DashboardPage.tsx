@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Card, DatePicker, Empty, Progress, Select, Space, Statistic, Typography } from 'antd'
-import { AlertOutlined, BarChartOutlined, CheckCircleOutlined, FileSearchOutlined, SwapOutlined } from '@ant-design/icons'
+import { AlertOutlined, BarChartOutlined, CheckCircleOutlined, FileSearchOutlined, HomeOutlined, SwapOutlined } from '@ant-design/icons'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -11,7 +11,7 @@ type DashboardData = {
   districts: DistrictOption[]
   geography: { regionCount: number; districtCount: number }
   xatlov: { districtCount: number; completedMfyCount: number; censusCount: number; migrationCount: number }
-  mkd: { totalBuildings: number; completedBuildings: number; remainingBuildings: number; plannedBuildings: number; completedAgainstPlan: number; remainingPlan: number }
+  mkd: { inProgressCount: number }
   rad: { month: number; year: number; monthlyLimit: number; rejectedApplications: number; remainingLimit: number }
   overdue: { total: number; stages: { stage: string; count: number }[] }
 }
@@ -59,7 +59,7 @@ function DashboardPage({ token }: { token: string; user: User }) {
       </Space>
     </div>
     {error && <Alert type="error" showIcon message={error} />}
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
       {[
         { label: 'Tugallangan mahallalar', value: data?.xatlov.completedMfyCount, icon: <CheckCircleOutlined />, tone: 'bg-emerald-50 text-emerald-600' },
         { label: 'Migratsiya soni', value: data?.xatlov.migrationCount, icon: <SwapOutlined />, tone: 'bg-sky-50 text-sky-600' },
@@ -68,6 +68,7 @@ function DashboardPage({ token }: { token: string; user: User }) {
           suffix: data?.rad.monthlyLimit ? <span className="text-base text-slate-500">({Math.round(data.rad.rejectedApplications / data.rad.monthlyLimit * 100)}%)</span> : undefined,
         },
         { label: 'Muddati o‘tgan arizalar', value: data?.overdue.total, icon: <AlertOutlined />, tone: 'bg-rose-50 text-rose-600' },
+        { label: 'MKD (jarayonda)', value: data?.mkd.inProgressCount, icon: <HomeOutlined />, tone: 'bg-indigo-50 text-indigo-600' },
       ].map((item) => <Card key={item.label} loading={loading}>
         <div className="flex items-center gap-4">
           <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl ${item.tone}`}>{item.icon}</div>

@@ -205,3 +205,30 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - New `GET /api/rad-limits/districts/:districtId/previous?date=` (write access) returns the district's latest record before the date. When adding a record, the form prefills the monthly limit from it and the rejected count too if it is in the same month (otherwise 0); changing the date in the form refreshes the prefill. Values stay editable.
 - Files changed: `backend/src/rad-limits.ts`, `frontend/src/RadLimitPage.tsx`, `context/PROGRESS.md`.
 - Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser; the daily RAD migration is still pending.
+
+### MKD - Daily in-progress records by year (completed in code, migration pending)
+
+- User decisions: the old MKD table (type, total/completed/planned buildings) is fully replaced and its data dropped; any year from 2020 to the current year can be chosen; the report uses each district's latest record per year on or before the report date; the dashboard shows the in-progress total.
+- `MkdRecord` now stores `year`, `recordDate` and `inProgressCount` (unique per district/year/date); enum `MkdType` was removed. Migration `20261016000000_mkd_in_progress` drops and recreates the table.
+- The MKD page was rewritten like the RAD page: region, district, year and a single date filter (default yesterday), totals row, Excel export, and a form with date, year and in-progress count.
+- The report has a new "MKD (jarayonda)" group after "Muddat kechikishi": "Jami" plus a "shundan" column for every year that has MKD data up to the report date (included in the Excel export). The dashboard has an "MKD (jarayonda)" card.
+- Files changed: `backend/prisma/schema.prisma`, `backend/prisma/migrations/20261016000000_mkd_in_progress/migration.sql`, `backend/src/mkd.ts`, `backend/src/report.ts`, `backend/src/dashboard.ts`, `backend/.qa-cleanup.ts`, `backend/README.md`, `frontend/src/MkdPage.tsx`, `frontend/src/ReportPage.tsx`, `frontend/src/DashboardPage.tsx`, `context/PROGRESS.md`.
+- Verification: `npx prisma validate`, `npx prisma generate`, backend `npm run build`, frontend `npx tsc -b`, `npm run lint` and `npm run build` passed. The migration has not been applied to the database yet. Not checked in a browser.
+
+### Xatlov - Prefill from the previous record (completed)
+
+- New `GET /api/xatlov/districts/:districtId/previous?date=` (write access) returns the district's latest record before the date. When adding a record, all form fields (counts, payment debt, completed MFY names) are prefilled from it; changing the date in the form refreshes the prefill. Values stay editable; with no previous record the fields start at 0/empty.
+- Files changed: `backend/src/xatlov.ts`, `frontend/src/XatlovPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### MKD - Prefill from the previous record (completed)
+
+- New `GET /api/mkd/districts/:districtId/previous?year=&date=` (write access) returns the district's latest record of that year before the date. When adding a record, the in-progress count is prefilled from it (0 if none); changing the year or date refreshes it. The value stays editable.
+- Files changed: `backend/src/mkd.ts`, `frontend/src/MkdPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser; the MKD migration is still pending.
+
+### Navigation - MKD page restored (completed)
+
+- The MKD page had no menu item or route. Added "MKD" to the Monitoring menu after "Xatlov" and the matching route in `App.tsx`.
+- Files changed: `frontend/src/App.tsx`, `frontend/src/AppLayout.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.

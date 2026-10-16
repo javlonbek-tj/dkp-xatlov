@@ -22,9 +22,12 @@ type ReportRow = {
   rad: { monthlyLimit: number; rejectedApplications: number } | null
   overdue15to30: number
   overdueOver30: number
+  // In-progress MKD count by year.
+  mkdInProgress: Record<string, number>
 }
 type ReportData = {
   date: string
+  mkdYears: number[]
   regions: { id: string; name: string }[]
   region: { id: string; name: string; groupLeader: string | null } | null
   rows: ReportRow[]
@@ -52,13 +55,15 @@ type Line = {
   radRemainder: number | null
   overdue15to30: number
   overdueOver30: number
+  mkdTotal: number | null
+  mkdByYear: Record<string, number>
   paymentDebt: number | null
 }
 
 const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
 const summedFields = [
   'engineerCount', 'xatlovEmployeeCount', 'objectCount', 'mfyCount', 'completedMfyCount', 'censusCount',
-  'dailyCompletedObjects', 'weeklyMigration', 'employeeDays', 'radPlan', 'radActual', 'overdue15to30', 'overdueOver30', 'paymentDebt',
+  'dailyCompletedObjects', 'weeklyMigration', 'employeeDays', 'radPlan', 'radActual', 'overdue15to30', 'overdueOver30', 'mkdTotal', 'paymentDebt',
 ] as const
 
 // Migration per Xatlov employee per worked day of the week.
@@ -95,15 +100,20 @@ function toLine(row: ReportRow, index: number): Line {
     radRemainder: radPlan === null || radActual === null ? null : radActual - radPlan,
     overdue15to30: row.overdue15to30,
     overdueOver30: row.overdueOver30,
+    mkdTotal: Object.keys(row.mkdInProgress).length ? Object.values(row.mkdInProgress).reduce((sum, value) => sum + value, 0) : null,
+    mkdByYear: row.mkdInProgress,
     paymentDebt: row.xatlov?.paymentDebt ?? null,
   }
 }
 
 function totalLine(lines: Line[], region: NonNullable<ReportData['region']>): Line {
-  const total = { key: 'total', index: null, name: region.name, republic: null, regional: null, leader: region.groupLeader } as Line
+  const total = { key: 'total', index: null, name: region.name, republic: null, regional: null, leader: region.groupLeader, mkdByYear: {} } as Line
   for (const field of summedFields) {
     const values = lines.map((line) => line[field]).filter((value): value is number => value !== null)
     ;(total[field] as number | null) = values.length ? values.reduce((sum, value) => sum + value, 0) : null
+  }
+  for (const line of lines) {
+    for (const [year, count] of Object.entries(line.mkdByYear)) total.mkdByYear[year] = (total.mkdByYear[year] ?? 0) + count
   }
   total.migrationPerEmployeeDay = perEmployeeDay(total.weeklyMigration, total.employeeDays)
   total.radPercent = percent(total.radActual, total.radPlan)
@@ -152,6 +162,8 @@ function ReportPage({ token }: { token: string; user: User }) {
   const districtLines = (data?.rows ?? []).map(toLine)
   const lines = data?.region ? [totalLine(districtLines, data.region), ...districtLines] : []
   const monthName = months[date.month()]
+  const mkdYears = data?.mkdYears ?? []
+  const mkdYearValue = (line: Line, year: number) => line.mkdByYear[year] ?? null
   // The three districts with the highest value of a field (ignoring zero and empty values).
   const topThree = (value: (line: Line) => number | null) => new Set(districtLines
     .filter((line) => (value(line) ?? 0) > 0)
@@ -218,6 +230,16 @@ function ReportPage({ token }: { token: string; user: User }) {
       title: 'Muddat kechikishi',
       children: [number('overdue15to30', '15-30 kungacha', worstOverdue15to30), number('overdueOver30', '1 oydan ortiq', worstOverdueOver30)],
     },
+    {
+      title: 'MKD (jarayonda)',
+      children: [
+        number('mkdTotal', 'Jami'),
+        ...(mkdYears.length ? [{
+          title: 'shundan',
+          children: mkdYears.map((year) => ({ title: `${year}-yil`, key: `mkd-${year}`, align: 'center' as const, render: (_: unknown, line: Line) => formatNumber(mkdYearValue(line, year)) })),
+        }] : []),
+      ],
+    },
     number('paymentDebt', 'To‘lov bo‘yicha qarzdorlik (mln so‘m)'),
   ]
 
@@ -242,6 +264,7 @@ function ReportPage({ token }: { token: string; user: User }) {
         ],
       },
       { title: 'Muddat kechikishi', children: ['15-30 kungacha', '1 oydan ortiq'] },
+      { title: 'MKD (jarayonda)', children: ['Jami', ...(mkdYears.length ? [{ title: 'shundan', children: mkdYears.map((year) => `${year}-yil`) }] : [])] },
       'To‘lov bo‘yicha qarzdorlik (mln so‘m)',
     ], lines.map((line) => [
       line.index, line.name,
@@ -249,7 +272,7 @@ function ReportPage({ token }: { token: string; user: User }) {
       employeeText(line.regional),
       line.engineerCount, line.xatlovEmployeeCount, line.objectCount, line.mfyCount, line.completedMfyCount,
       line.censusCount, line.dailyCompletedObjects, line.weeklyMigration, line.migrationPerEmployeeDay, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
-      line.overdue15to30, line.overdueOver30, line.paymentDebt,
+      line.overdue15to30, line.overdueOver30, line.mkdTotal, ...mkdYears.map((year) => mkdYearValue(line, year)), line.paymentDebt,
     ]), {
       totalRows: 1,
       highlight: (row, column) => {
@@ -295,7 +318,7 @@ function ReportPage({ token }: { token: string; user: User }) {
         />
         <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
           Xatlov ustunlari va qarzdorlik tanlangan sanagacha bo‘lgan eng so‘nggi Xatlov yozuvidan olinadi. Rad etish — tanlangan oy uchun RAD limiti.
-          Muddat kechikishi — tanlangan sanagacha bo‘lgan eng so‘nggi yozuv. Qizil — eng yuqori ko‘rsatkichli uchta tuman.
+          Muddat kechikishi va MKD (jarayonda) — tanlangan sanagacha bo‘lgan eng so‘nggi yozuv (MKD har bir yil uchun alohida). Qizil — eng yuqori ko‘rsatkichli uchta tuman.
         </Typography.Paragraph>
       </Card>
     </Space>

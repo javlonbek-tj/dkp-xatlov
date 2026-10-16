@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd'
 import {
   AlertOutlined,
   BarChartOutlined,
+  BuildOutlined,
   FileSearchOutlined,
   HomeOutlined,
   LogoutOutlined,
@@ -53,6 +54,7 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
       { key: 'dashboard', icon: <HomeOutlined />, label: pageLabels.dashboard },
       { key: 'report', icon: <TableOutlined />, label: pageLabels.report },
       { key: 'xatlov', icon: <FileSearchOutlined />, label: pageLabels.xatlov },
+      { key: 'mkd', icon: <BuildOutlined />, label: pageLabels.mkd },
       { key: 'rad', icon: <BarChartOutlined />, label: pageLabels.rad },
       { key: 'overdue', icon: <AlertOutlined />, label: 'Muddati o‘tgan' },
       { key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' },
