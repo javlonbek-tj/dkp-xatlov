@@ -232,3 +232,11 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - The MKD page had no menu item or route. Added "MKD" to the Monitoring menu after "Xatlov" and the matching route in `App.tsx`.
 - Files changed: `frontend/src/App.tsx`, `frontend/src/AppLayout.tsx`, `context/PROGRESS.md`.
 - Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### Report - PDF export and title (completed)
+
+- User decisions: the title is in Latin script; the note shows the report date and the export time. The PDF first used the browser print dialog; the user then asked for a direct download, so `jspdf` 3.0.1 and `html2canvas` 1.4.1 were added (loaded on demand, like `exceljs`).
+- Added "PDF yuklab olish" next to the Excel export. `frontend/src/pdf-export.ts` builds an A4 landscape page from the same headers, rows and red highlights as the Excel export, renders it to an image in a hidden frame and downloads `hisobot-YYYY-MM-DD.pdf`. Long tables are split between rows and the column headers repeat on following pages. The PDF content is an image (text is not selectable).
+- Both exports have the title "“Dolzarb 90 kunlik” doirasida <region> boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida" / "MA’LUMOT" with "<date> y. soat <time>" on the right. `exportExcel` accepts an optional `title` option.
+- Files changed: `frontend/package.json`, `frontend/package-lock.json`, `frontend/src/excel-export.ts`, `frontend/src/pdf-export.ts` (new), `frontend/src/ReportPage.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b`, `npm run lint` and `npm run build` passed. `exportPdf` was run with sample data in headless Chrome: 22 districts fit on one A4 landscape page; 31 rows split into two pages between rows with repeated headers. Not checked inside the running app.

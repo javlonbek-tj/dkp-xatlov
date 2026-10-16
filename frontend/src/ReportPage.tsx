@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, DatePicker, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { employeeText, exportExcel } from './excel-export'
+import { employeeText, exportExcel, type ExportHeader } from './excel-export'
+import { exportPdf } from './pdf-export'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -136,6 +137,7 @@ function ReportPage({ token }: { token: string; user: User }) {
   const [regionId, setRegionId] = useState<string>()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -243,10 +245,15 @@ function ReportPage({ token }: { token: string; user: User }) {
     number('paymentDebt', 'To‘lov bo‘yicha qarzdorlik (mln so‘m)'),
   ]
 
-  function exportReport() {
+  // Excel and PDF share the title, columns and highlights.
+  function exportReport(format: 'excel' | 'pdf') {
     // Leaf column positions of the red-highlighted cells, matching the table.
     const radColumns = [13, 14, 15, 16]
-    void exportExcel(`hisobot-${date.format('YYYY-MM-DD')}.xlsx`, [
+    const title = {
+      lines: [`“Dolzarb 90 kunlik” doirasida ${data?.region?.name ?? ''} boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida`, 'MA’LUMOT'],
+      note: `${date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
+    }
+    const headers: ExportHeader[] = [
       'T/r', 'Hudud nomi',
       'Respublika vakili', 'Viloyat vakili',
       {
@@ -266,23 +273,34 @@ function ReportPage({ token }: { token: string; user: User }) {
       { title: 'Muddat kechikishi', children: ['15-30 kungacha', '1 oydan ortiq'] },
       { title: 'MKD (jarayonda)', children: ['Jami', ...(mkdYears.length ? [{ title: 'shundan', children: mkdYears.map((year) => `${year}-yil`) }] : [])] },
       'To‘lov bo‘yicha qarzdorlik (mln so‘m)',
-    ], lines.map((line) => [
+    ]
+    const rows = lines.map((line) => [
       line.index, line.name,
       line.index === null ? `Bosh vakil — ${line.leader ?? ''}` : employeeText(line.republic),
       employeeText(line.regional),
       line.engineerCount, line.xatlovEmployeeCount, line.objectCount, line.mfyCount, line.completedMfyCount,
       line.censusCount, line.dailyCompletedObjects, line.weeklyMigration, line.migrationPerEmployeeDay, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
       line.overdue15to30, line.overdueOver30, line.mkdTotal, ...mkdYears.map((year) => mkdYearValue(line, year)), line.paymentDebt,
-    ]), {
+    ])
+    const options = {
+      title,
       totalRows: 1,
-      highlight: (row, column) => {
+      highlight: (row: number, column: number) => {
         const key = lines[row].key
         return (column === 12 && worstPerEmployee.has(key))
           || (radColumns.includes(column) && worstRad.has(key))
           || (column === 17 && worstOverdue15to30.has(key))
           || (column === 18 && worstOverdueOver30.has(key))
       },
-    })
+    }
+    const filename = `hisobot-${date.format('YYYY-MM-DD')}`
+    if (format === 'pdf') {
+      setPdfLoading(true)
+      exportPdf(filename, headers, rows, options)
+        .catch(() => setError('PDF faylni yaratib bo‘lmadi'))
+        .finally(() => setPdfLoading(false))
+    }
+    else void exportExcel(`${filename}.xlsx`, headers, rows, options)
   }
 
   return (
@@ -303,7 +321,10 @@ function ReportPage({ token }: { token: string; user: User }) {
               options={(data?.regions ?? []).map((region) => ({ value: region.id, label: region.name }))}
             />
           </Space>
-          <Button onClick={exportReport} disabled={!lines.length}>Excel uchun eksport</Button>
+          <Space>
+            <Button onClick={() => exportReport('excel')} disabled={!lines.length}>Excel uchun eksport</Button>
+            <Button onClick={() => exportReport('pdf')} disabled={!lines.length} loading={pdfLoading}>PDF yuklab olish</Button>
+          </Space>
         </div>
         <Table
           rowKey="key"

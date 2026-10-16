@@ -1,15 +1,18 @@
 type ExportValue = string | number | null | undefined
 // A plain title is one column; a group spans its children, like grouped table headers.
 export type ExportHeader = string | { title: string; children: ExportHeader[] }
+// Centered title lines above the table and a small right-aligned note (e.g. the date) under them.
+export type ExportTitle = { lines: string[]; note?: string }
 type ExportOptions = {
+  title?: ExportTitle
   // The first N data rows are totals and are shown in bold.
   totalRows?: number
   // Data cells (zero-based row and column) to highlight in red.
   highlight?: (row: number, column: number) => boolean
 }
 
-const depth = (header: ExportHeader): number => typeof header === 'string' ? 1 : 1 + Math.max(...header.children.map(depth))
-const width = (header: ExportHeader): number => typeof header === 'string' ? 1 : header.children.reduce((sum, child) => sum + width(child), 0)
+export const depth = (header: ExportHeader): number => typeof header === 'string' ? 1 : 1 + Math.max(...header.children.map(depth))
+export const width = (header: ExportHeader): number => typeof header === 'string' ? 1 : header.children.reduce((sum, child) => sum + width(child), 0)
 const leaves = (header: ExportHeader): string[] => typeof header === 'string' ? [header] : header.children.flatMap(leaves)
 
 // Builds a styled .xlsx file with multi-row merged headers, borders, a frozen header, filters and fitted column widths.
@@ -17,7 +20,10 @@ const leaves = (header: ExportHeader): string[] => typeof header === 'string' ? 
 export async function exportExcel(filename: string, headers: ExportHeader[], rows: ExportValue[][], options: ExportOptions = {}) {
   const { default: ExcelJS } = await import('exceljs')
   const workbook = new ExcelJS.Workbook()
-  const headerRows = Math.max(...headers.map(depth))
+  const titleRows = options.title ? options.title.lines.length + (options.title.note ? 1 : 0) : 0
+  // Header rows come right after the title rows.
+  const headerRows = titleRows + Math.max(...headers.map(depth))
+  const columnCount = headers.reduce((sum, header) => sum + width(header), 0)
   const sheet = workbook.addWorksheet('Ma’lumotlar', { views: [{ state: 'frozen', ySplit: headerRows }] })
   const border = { style: 'thin' as const, color: { argb: 'FFCBD5E1' } }
   const borders = { top: border, left: border, bottom: border, right: border }
@@ -37,13 +43,30 @@ export async function exportExcel(filename: string, headers: ExportHeader[], row
       child += width(item)
     }
   }
+  if (options.title) {
+    const { lines, note } = options.title
+    lines.forEach((text, index) => {
+      const cell = sheet.getCell(index + 1, 1)
+      cell.value = text
+      cell.font = { bold: true, size: 13, color: { argb: index === 0 ? 'FF991B1B' : 'FF1E3A8A' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+      sheet.mergeCells(index + 1, 1, index + 1, columnCount)
+      sheet.getRow(index + 1).height = 22
+    })
+    if (note) {
+      const cell = sheet.getCell(titleRows, 1)
+      cell.value = note
+      cell.font = { italic: true, size: 9 }
+      cell.alignment = { horizontal: 'right' }
+      sheet.mergeCells(titleRows, 1, titleRows, columnCount)
+    }
+  }
   let column = 1
   for (const header of headers) {
-    place(header, 1, column)
+    place(header, titleRows + 1, column)
     column += width(header)
   }
-  const columnCount = column - 1
-  for (let row = 1; row <= headerRows; row += 1) {
+  for (let row = titleRows + 1; row <= headerRows; row += 1) {
     sheet.getRow(row).height = 30
     for (let col = 1; col <= columnCount; col += 1) {
       const cell = sheet.getCell(row, col)
