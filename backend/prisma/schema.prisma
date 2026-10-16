@@ -11,6 +11,8 @@ enum UserRole {
   ADMIN
   REPUBLIC_EMPLOYEE
   REGIONAL_EMPLOYEE
+  // Read-only access to the regions the user is assigned to.
+  VIEWER
 }
 
 enum CallStatus {

@@ -16,7 +16,7 @@ type User = {
   id: string
   username: string
   fullName: string
-  role: 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
+  role: 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
   isGroupLeader?: boolean
 }
 
@@ -86,13 +86,13 @@ function App() {
     return (
       <AppLayout user={user} page={page} error={error} onNavigate={setPage} onLogout={signOut}>
         {page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
-          : page === 'assignments' && user.role !== 'REGIONAL_EMPLOYEE' ? <AssignmentsPage {...props} />
+          : page === 'assignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage {...props} />
           : page === 'report' ? <ReportPage {...props} />
           : page === 'xatlov' ? <XatlovPage {...props} />
           : page === 'mkd' ? <MkdPage {...props} />
           : page === 'rad' ? <RadLimitPage {...props} />
           : page === 'overdue' ? <OverdueApplicationsPage {...props} />
-          : page === 'calls' ? <CallLogPage {...props} />
+          : page === 'calls' && user.role !== 'VIEWER' ? <CallLogPage {...props} />
           : <DashboardPage {...props} />}
       </AppLayout>
     )

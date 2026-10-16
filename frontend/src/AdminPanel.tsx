@@ -16,7 +16,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
 type Employee = { id: string; username: string; fullName: string; phone?: string | null; role: Role }
 type RegionAssignment = { id: string; regionId: string; user: Employee }
 type Region = {
@@ -48,6 +48,7 @@ const roleLabels: Record<Role, string> = {
   ADMIN: 'Administrator',
   REPUBLIC_EMPLOYEE: 'Respublika xodimi',
   REGIONAL_EMPLOYEE: 'Hududiy xodim',
+  VIEWER: 'Kuzatuvchi',
 }
 
 async function api<T>(token: string, path: string, init?: RequestInit): Promise<T> {
@@ -284,11 +285,12 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
     },
     {
       title: 'Turi', key: 'role', width: 160, align: 'center',
-      render: (_, assignment) => <Tag color={assignment.user.role === 'REPUBLIC_EMPLOYEE' ? 'blue' : 'green'} className="!m-0">{roleLabels[assignment.user.role]}</Tag>,
+      render: (_, assignment) => <Tag color={{ ADMIN: 'red', REPUBLIC_EMPLOYEE: 'blue', REGIONAL_EMPLOYEE: 'green', VIEWER: 'default' }[assignment.user.role]} className="!m-0">{roleLabels[assignment.user.role]}</Tag>,
     },
     {
       title: 'Biriktirilgan tumanlar', key: 'districts',
-      render: (_, assignment) => <Select
+      // Viewers only see the region; they are not assigned to districts.
+      render: (_, assignment) => assignment.user.role === 'VIEWER' ? <span className="text-slate-400">Butun hudud (faqat ko‘rish)</span> : <Select
         mode="multiple"
         aria-label="Tumanlar"
         className="w-full"
@@ -308,7 +310,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
     {
       title: 'Amallar', key: 'actions', width: 300, align: 'center',
       render: (_, assignment) => <Space>
-        <Button size="small" type="primary" disabled={!districtDrafts[assignment.id]} onClick={() => saveAssignmentDistricts(assignment)}>Saqlash</Button>
+        {assignment.user.role !== 'VIEWER' && <Button size="small" type="primary" disabled={!districtDrafts[assignment.id]} onClick={() => saveAssignmentDistricts(assignment)}>Saqlash</Button>}
         <Button size="small" onClick={() => openUserEditor(users.find((item) => item.id === assignment.user.id) ?? { ...assignment.user, regionAssignments: [] })}>Tahrirlash</Button>
         <Popconfirm title="Xodimni bu hududdan olib tashlaysizmi?" onConfirm={() => run(() => api(token, `/regions/${assignmentRegion!.id}/assignments/${assignment.id}`, { method: 'DELETE' }))}>
           <Button size="small" danger>Olib tashlash</Button>
@@ -480,6 +482,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
             <Select options={[
               { value: 'REPUBLIC_EMPLOYEE', label: roleLabels.REPUBLIC_EMPLOYEE },
               { value: 'REGIONAL_EMPLOYEE', label: roleLabels.REGIONAL_EMPLOYEE },
+              { value: 'VIEWER', label: roleLabels.VIEWER },
             ]} />
           </Form.Item>
           <Form.Item label="F.I.Sh." name="fullName" rules={[{ required: true }]}><Input maxLength={150} /></Form.Item>

@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; regionId: string; engineerCount: number | null; region: { id: string; name: string }
@@ -26,7 +26,7 @@ function CallLogPage({ token, user }: { token: string; user: User }) {
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<{ districtId: string; record?: CallRecord } | null>(null)
   const [form] = Form.useForm()
-  const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  const canWrite = user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
   const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 

@@ -272,3 +272,11 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Theme tokens: base font size 14px → 13px, table cells 12px (all table sizes), menu item height 42 → 38, card header 15px → 14px.
 - Files changed: `frontend/src/main.tsx`, `context/PROGRESS.md`.
 - Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### Roles - Viewer ("Kuzatuvchi") (completed in code, migration pending)
+
+- User decisions: a read-only role that sees only the regions it is assigned to; pages: Dashboard, Hisobot, Xatlov, MKD, RAD and Muddati o‘tgan, with Excel/PDF export; no call logs, assignments or admin pages.
+- `UserRole` gains `VIEWER` (migration `20261016010000_add_viewer_role`). Viewers use region assignments for scope, so all read endpoints work unchanged; every write endpoint already requires an Administrator or responsible Republic employee. `GET /api/call-log` returns 403 for viewers. Administrators and group leaders can create viewers and assign them to regions; viewers cannot be assigned to districts.
+- Frontend: "Kuzatuvchi" label and option in the user forms; write controls are shown only to Administrators and Republic employees; viewers do not see the call-log menu item or the "Boshqaruv" group; the region assignment table shows "Butun hudud (faqat ko‘rish)" instead of a district picker for viewers.
+- Files changed: `backend/prisma/schema.prisma`, `backend/prisma/migrations/20261016010000_add_viewer_role/migration.sql`, `backend/src/auth.ts`, `backend/src/admin.ts`, `backend/src/call-log.ts`, `backend/README.md`, `frontend/src/App.tsx`, `frontend/src/AppLayout.tsx`, `frontend/src/AdminPanel.tsx`, `frontend/src/AssignmentsPage.tsx`, `frontend/src/DashboardPage.tsx`, `frontend/src/ReportPage.tsx`, `frontend/src/XatlovPage.tsx`, `frontend/src/MkdPage.tsx`, `frontend/src/RadLimitPage.tsx`, `frontend/src/OverdueApplicationsPage.tsx`, `frontend/src/CallLogPage.tsx`, `context/PROGRESS.md`.
+- Verification: `npx prisma validate`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. `npx prisma generate` updated the client types but could not replace the query engine file because the running backend holds it; restart the backend after migrating. The migration has not been applied. Not checked in a browser.

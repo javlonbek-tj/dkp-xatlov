@@ -260,7 +260,7 @@ router.post('/regions/:regionId/assignments', async (request, response, next) =>
     await requireRegionAccess(request, regionId);
     const userId = text(request.body?.userId, 'User', 100);
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (!user || (user.role !== UserRole.REPUBLIC_EMPLOYEE && user.role !== UserRole.REGIONAL_EMPLOYEE)) {
+    if (!user || user.role === UserRole.ADMIN) {
       throw new ApiError(400, 'INVALID_EMPLOYEE', 'Only employee accounts can be assigned to a region');
     }
     const assignment = await prisma.employeeRegionAssignment.create({ data: { userId, regionId } });
@@ -276,8 +276,8 @@ router.post('/regions/:regionId/employees', async (request, response, next) => {
     const regionId = request.params.regionId as string;
     await requireRegionAccess(request, regionId);
     const role = request.body?.role;
-    if (role !== UserRole.REPUBLIC_EMPLOYEE && role !== UserRole.REGIONAL_EMPLOYEE) {
-      throw new ApiError(400, 'INVALID_ROLE', 'Choose Republic-level or regional employee');
+    if (role !== UserRole.REPUBLIC_EMPLOYEE && role !== UserRole.REGIONAL_EMPLOYEE && role !== UserRole.VIEWER) {
+      throw new ApiError(400, 'INVALID_ROLE', 'Choose Republic-level employee, regional employee or viewer');
     }
     const username = text(request.body?.username, 'Username', 100).toLowerCase();
     const fullName = text(request.body?.fullName, 'Full name', 150);

@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { employeeText, exportExcel } from './excel-export'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; engineerCount: number | null; regionId: string
@@ -46,7 +46,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
-  const canWrite = user.role !== 'REGIONAL_EMPLOYEE'
+  const canWrite = user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
   const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 

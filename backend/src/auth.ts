@@ -135,7 +135,7 @@ export function requireDistrictAccess(action: 'report' | 'write', allowGroupLead
         (district.republicEmployeeAssignment?.userId === user.id ||
           (allowGroupLeader && district.region.groupLeaderAssignment?.userId === user.id));
       const isRegionalEmployeeInRegion =
-        user.role === UserRole.REGIONAL_EMPLOYEE && district.region.employeeAssignments.length > 0;
+        (user.role === UserRole.REGIONAL_EMPLOYEE || user.role === UserRole.VIEWER) && district.region.employeeAssignments.length > 0;
       const permitted =
         isAdministrator ||
         (action === 'write' && isAssignedRepublicEmployee) ||

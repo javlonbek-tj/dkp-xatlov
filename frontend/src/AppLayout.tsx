@@ -16,7 +16,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
 type User = { id: string; username: string; fullName: string; role: Role; isGroupLeader?: boolean }
 export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'calls'
 
@@ -24,6 +24,7 @@ const roleLabels: Record<Role, string> = {
   ADMIN: 'Administrator',
   REPUBLIC_EMPLOYEE: 'Respublika xodimi',
   REGIONAL_EMPLOYEE: 'Hududiy xodim',
+  VIEWER: 'Kuzatuvchi',
 }
 
 const pageLabels: Record<Page, string> = {
@@ -57,9 +58,9 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
       { key: 'mkd', icon: <BuildOutlined />, label: pageLabels.mkd },
       { key: 'rad', icon: <BarChartOutlined />, label: pageLabels.rad },
       { key: 'overdue', icon: <AlertOutlined />, label: 'Muddati o‘tgan' },
-      { key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' },
+      ...(user.role !== 'VIEWER' ? [{ key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' }] : []),
     ] },
-    ...(user.role !== 'REGIONAL_EMPLOYEE' ? [{ type: 'group' as const, label: 'Boshqaruv', children: [
+    ...(user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE' ? [{ type: 'group' as const, label: 'Boshqaruv', children: [
       ...(user.role === 'ADMIN' || user.isGroupLeader ? [{ key: 'admin', icon: <TeamOutlined />, label: 'Xodimlar va tayinlovlar' }] : []),
       { key: 'assignments', icon: <SolutionOutlined />, label: pageLabels.assignments },
     ] }] : []),
