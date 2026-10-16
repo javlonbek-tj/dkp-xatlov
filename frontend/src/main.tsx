@@ -11,6 +11,7 @@ const theme = {
     colorBgLayout: '#f5f6fa',
     colorBorderSecondary: '#eceef3',
     borderRadius: 10,
+    fontSize: 13,
     fontFamily: "'Inter', system-ui, 'Segoe UI', Roboto, sans-serif",
   },
   components: {
@@ -20,10 +21,10 @@ const theme = {
       darkItemSelectedBg: '#4f46e5',
       darkGroupTitleColor: '#64748b',
       itemBorderRadius: 8,
-      itemHeight: 42,
+      itemHeight: 38,
     },
-    Card: { headerFontSize: 15 },
-    Table: { headerBg: '#f8fafc', headerColor: '#475569' },
+    Card: { headerFontSize: 14 },
+    Table: { headerBg: '#f8fafc', headerColor: '#475569', cellFontSize: 12, cellFontSizeMD: 12, cellFontSizeSM: 12 },
   },
 }
 

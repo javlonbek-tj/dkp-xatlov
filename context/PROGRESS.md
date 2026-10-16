@@ -266,3 +266,9 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - MKD page: "Barchasiga 0 kiritish" button (with confirmation) uses the shown year, selected date and region/district filter; it is disabled when all years are shown. After it runs, only non-zero districts need editing.
 - Files changed: `backend/src/mkd.ts`, `frontend/src/MkdPage.tsx`, `context/PROGRESS.md`.
 - Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+### UI - Smaller text (completed)
+
+- Theme tokens: base font size 14px → 13px, table cells 12px (all table sizes), menu item height 42 → 38, card header 15px → 14px.
+- Files changed: `frontend/src/main.tsx`, `context/PROGRESS.md`.
+- Verification: Frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
