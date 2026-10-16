@@ -259,3 +259,10 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - On some systems html2canvas drew text lower than the browser, so words touched the cell borders. The PDF page now uses fixed pixel font sizes and line heights, a little more cell padding, and single-word header titles (e.g. "T/r") no longer wrap. The page is widened to the table's real width before rendering, so the title and date stay aligned with the table.
 - Files changed: `frontend/src/pdf-export.ts`, `context/PROGRESS.md`.
 - Verification: Frontend `npx tsc -b`, `npm run lint` and `npm run build` passed. `exportPdf` was rerun with sample data in headless Chrome and the output checked visually; the original misalignment could not be reproduced on this machine, so the fix should be confirmed on the machine that showed it.
+
+### MKD - Fill zero for all districts (completed)
+
+- New `POST /api/mkd/fill-zero` (`{ year, recordDate, regionId?, districtId? }`) creates a 0 in-progress record for that year and date in every district the user may edit (within the optional filter) that has no record yet; existing records are never changed. Regional employees get 403.
+- MKD page: "Barchasiga 0 kiritish" button (with confirmation) uses the shown year, selected date and region/district filter; it is disabled when all years are shown. After it runs, only non-zero districts need editing.
+- Files changed: `backend/src/mkd.ts`, `frontend/src/MkdPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.

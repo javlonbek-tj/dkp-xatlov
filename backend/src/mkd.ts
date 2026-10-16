@@ -89,6 +89,40 @@ router.get('/districts/:districtId/previous', requireAuth, requireDistrictAccess
   } catch (error) { next(error); }
 });
 
+// Adds a zero in-progress record for the year and date to every writable district (within the optional region/district
+// filter) that has none yet; existing records are left unchanged.
+router.post('/fill-zero', requireAuth, async (request, response, next) => {
+  try {
+    const user = request.auth!;
+    const input = (request.body ?? {}) as Record<string, unknown>;
+    const { regionId, districtId } = input;
+    if ([regionId, districtId].some((value) => value !== undefined && value !== null && typeof value !== 'string')) {
+      throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
+    }
+    const year = parseYear(input.year);
+    const recordDate = parseDate(input.recordDate);
+    const writable = await writableDistrictIds(user, true);
+    if (writable && !writable.length) throw new ApiError(403, 'FORBIDDEN', 'You cannot add MKD records');
+    const districts = await prisma.district.findMany({
+      where: {
+        AND: [
+          readableDistrictScope(user),
+          regionId ? { regionId: regionId as string } : {},
+          districtId ? { id: districtId as string } : {},
+          writable ? { id: { in: writable } } : {},
+        ],
+        mkdRecords: { none: { year, recordDate } },
+      },
+      select: { id: true },
+    });
+    const result = await prisma.mkdRecord.createMany({
+      data: districts.map((district) => ({ districtId: district.id, year, recordDate, inProgressCount: 0 })),
+      skipDuplicates: true,
+    });
+    response.status(201).json({ created: result.count });
+  } catch (error) { next(error); }
+});
+
 router.post('/districts/:districtId', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
   try {
     const districtId = request.params.districtId;
