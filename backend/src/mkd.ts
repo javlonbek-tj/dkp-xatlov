@@ -74,6 +74,21 @@ router.get('/', requireAuth, async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+// Latest record of the year before the given date, used to prefill a new record.
+router.get('/districts/:districtId/previous', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
+  try {
+    const districtId = request.params.districtId;
+    if (typeof districtId !== 'string') throw new ApiError(400, 'INVALID_DISTRICT', 'A single district ID is required');
+    if (typeof request.query.year !== 'string') throw new ApiError(400, 'INVALID_MKD_YEAR', 'A year is required');
+    const record = await prisma.mkdRecord.findFirst({
+      where: { districtId, year: parseYear(Number(request.query.year)), recordDate: { lt: parseDate(request.query.date) } },
+      orderBy: { recordDate: 'desc' },
+      select: { recordDate: true, inProgressCount: true },
+    });
+    response.json({ record });
+  } catch (error) { next(error); }
+});
+
 router.post('/districts/:districtId', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
   try {
     const districtId = request.params.districtId;
