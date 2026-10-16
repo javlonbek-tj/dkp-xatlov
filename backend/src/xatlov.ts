@@ -105,6 +105,20 @@ router.get('/', requireAuth, async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+// Latest record before the given date, used to prefill a new record.
+router.get('/districts/:districtId/previous', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
+  try {
+    const districtId = request.params.districtId;
+    if (typeof districtId !== 'string') throw new ApiError(400, 'INVALID_DISTRICT', 'A single district ID is required');
+    const record = await prisma.xatlovRecord.findFirst({
+      where: { districtId, recordDate: { lt: parseDate(request.query.date) } },
+      orderBy: { recordDate: 'desc' },
+      select: { recordDate: true, completedMfyCount: true, censusCount: true, completedObjectCount: true, migrationCount: true, paymentDebt: true, completedMfyNames: true },
+    });
+    response.json({ record });
+  } catch (error) { next(error); }
+});
+
 router.post('/districts/:districtId', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
   try {
     const districtId = request.params.districtId;

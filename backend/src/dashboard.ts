@@ -78,10 +78,12 @@ router.get('/', requireAuth, async (request, response, next) => {
         select: { districtId: true, recordDate: true, completedMfyCount: true, censusCount: true, migrationCount: true },
         orderBy: [{ recordDate: 'desc' }, { createdAt: 'desc' }],
       }),
+      // Latest in-progress MKD snapshot per district and year.
       prisma.mkdRecord.findMany({
-        where: { districtId: { in: ids }, ...(dateFilter ? { targetDate: dateFilter } : {}) },
-        select: { districtId: true, type: true, targetDate: true, totalBuildings: true, completedBuildings: true, plannedBuildings: true, completedAgainstPlan: true },
-        orderBy: [{ targetDate: 'desc' }, { createdAt: 'desc' }],
+        where: { districtId: { in: ids }, ...(dateFilter ? { recordDate: dateFilter } : {}) },
+        select: { inProgressCount: true },
+        orderBy: [{ districtId: 'asc' }, { year: 'asc' }, { recordDate: 'desc' }],
+        distinct: ['districtId', 'year'],
       }),
       // Latest month-to-date RAD snapshot per district in the current month.
       prisma.radLimit.findMany({
@@ -98,13 +100,7 @@ router.get('/', requireAuth, async (request, response, next) => {
 
     const latestXatlov = new Map<string, (typeof xatlovRows)[number]>();
     for (const row of xatlovRows) if (!latestXatlov.has(row.districtId)) latestXatlov.set(row.districtId, row);
-    const latestMkd = new Map<string, (typeof mkdRows)[number]>();
-    for (const row of mkdRows) {
-      const key = `${row.districtId}:${row.type}`;
-      if (!latestMkd.has(key)) latestMkd.set(key, row);
-    }
     const xatlov = [...latestXatlov.values()];
-    const mkd = [...latestMkd.values()];
     // Latest overdue stage counts per district, summed.
     const overdueStages = Object.fromEntries(stageKeys.map((stage) => [stage, sum(overdueRows, (row) => row[stageFieldByKey[stage]])])) as Record<Stage, number>;
     const overdueTotal = sum(stageKeys, (stage) => overdueStages[stage]);
@@ -121,14 +117,7 @@ router.get('/', requireAuth, async (request, response, next) => {
         censusCount: sum(xatlov, (row) => row.censusCount),
         migrationCount: sum(xatlov, (row) => row.migrationCount),
       },
-      mkd: {
-        totalBuildings: sum(mkd, (row) => row.totalBuildings),
-        completedBuildings: sum(mkd, (row) => row.completedBuildings),
-        remainingBuildings: sum(mkd, (row) => row.totalBuildings - row.completedBuildings),
-        plannedBuildings: sum(mkd, (row) => row.plannedBuildings),
-        completedAgainstPlan: sum(mkd, (row) => row.completedAgainstPlan),
-        remainingPlan: sum(mkd, (row) => row.plannedBuildings - row.completedAgainstPlan),
-      },
+      mkd: { inProgressCount: sum(mkdRows, (row) => row.inProgressCount) },
       rad: { month: today.month, year: today.year, monthlyLimit: currentMonthLimit, rejectedApplications, remainingLimit: currentMonthLimit - rejectedApplications },
       overdue: { total: overdueTotal, stages: stageKeys.map((stage) => ({ stage, count: overdueStages[stage] })) },
     });

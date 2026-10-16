@@ -24,7 +24,8 @@ function tashkentToday(): Date {
 }
 
 // One row per district of the selected region, combining district data with the latest Xatlov snapshot,
-// the RAD limit for the report month, and the latest overdue stage counts on or before the report date.
+// the RAD limit for the report month, the latest overdue stage counts and the latest in-progress MKD per year
+// on or before the report date.
 router.get('/', requireAuth, async (request, response, next) => {
   try {
     const user = request.auth!;
@@ -44,7 +45,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const region = regions.find((item) => item.id === regionId);
     if (!region) {
       if (requestedRegionId) throw new ApiError(403, 'FORBIDDEN', 'You do not have access to this region');
-      response.json({ date: date.toISOString().slice(0, 10), regions, region: null, rows: [] });
+      response.json({ date: date.toISOString().slice(0, 10), regions, region: null, mkdYears: [], rows: [] });
       return;
     }
 
@@ -65,7 +66,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const weekEnd = date < friday ? date : friday;
     const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 
-    const [xatlovRecords, weeklyXatlov, radLimits, overdue] = await Promise.all([
+    const [xatlovRecords, weeklyXatlov, radLimits, overdue, mkdRecords, mkdYears] = await Promise.all([
       prisma.xatlovRecord.findMany({
         where: { districtId: { in: ids }, recordDate: { lte: date } },
         orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
@@ -88,6 +89,13 @@ router.get('/', requireAuth, async (request, response, next) => {
         orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
         distinct: ['districtId'],
       }),
+      prisma.mkdRecord.findMany({
+        where: { districtId: { in: ids }, recordDate: { lte: date } },
+        orderBy: [{ districtId: 'asc' }, { year: 'asc' }, { recordDate: 'desc' }],
+        distinct: ['districtId', 'year'],
+      }),
+      // Every year with MKD data becomes a report column, so all regions share the same columns.
+      prisma.mkdRecord.findMany({ where: { recordDate: { lte: date } }, distinct: ['year'], select: { year: true }, orderBy: { year: 'asc' } }),
     ]);
 
     const rows = districts.map((district) => {
@@ -118,6 +126,7 @@ router.get('/', requireAuth, async (request, response, next) => {
         rad: rad ? { monthlyLimit: rad.monthlyLimit, rejectedApplications: rad.rejectedApplications } : null,
         overdue15to30: stages?.stage15to30 ?? 0,
         overdueOver30: (stages?.stage31to90 ?? 0) + (stages?.stage90plus ?? 0),
+        mkdInProgress: Object.fromEntries(mkdRecords.filter((record) => record.districtId === district.id).map((record) => [record.year, record.inProgressCount])),
       };
     });
 
@@ -125,6 +134,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       date: date.toISOString().slice(0, 10),
       regions,
       region: { ...region, groupLeader: groupLeader?.groupLeaderAssignment?.user.fullName ?? null },
+      mkdYears: mkdYears.map((item) => item.year),
       rows,
     });
   } catch (error) {

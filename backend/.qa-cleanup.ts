@@ -7,7 +7,6 @@ const qaUserIds = [fixtures.adminId, fixtures.republic1Id, fixtures.republic2Id,
 const districtIds = [fixtures.district1Id, fixtures.district2Id];
 const recordIds = {
   xatlovRecord: [fixtures.xatlov1Id, fixtures.xatlov2Id],
-  mkdRecord: [fixtures.mkdId],
   radLimit: [fixtures.radId],
   overdueApplication: [fixtures.overdueId],
   callLog: [fixtures.callId],

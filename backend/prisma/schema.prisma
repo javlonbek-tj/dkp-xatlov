@@ -13,12 +13,6 @@ enum UserRole {
   REGIONAL_EMPLOYEE
 }
 
-enum MkdType {
-  YEAR_2025
-  YEAR_2024
-  NEW_UZBEKISTAN
-}
-
 enum CallStatus {
   CALLED_SUCCESSFULLY
   NO_ANSWER
@@ -116,21 +110,19 @@ model XatlovRecord {
 }
 
 model MkdRecord {
-  id                    String   @id @default(cuid())
-  districtId            String
-  type                  MkdType
-  targetDate            DateTime @db.Date
-  totalBuildings        Int
-  completedBuildings    Int
-  plannedBuildings      Int
-  completedAgainstPlan  Int
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id              String   @id @default(cuid())
+  districtId      String
+  // Daily snapshot: MKD of the given year that are in progress as of recordDate.
+  year            Int
+  recordDate      DateTime @db.Date
+  inProgressCount Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
-  @@unique([districtId, type, targetDate])
-  @@index([targetDate])
+  @@unique([districtId, year, recordDate])
+  @@index([recordDate])
 }
 
 model RadLimit {
