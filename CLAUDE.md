@@ -8,7 +8,7 @@ Xatlov is a regional monitoring application. Follow the requirements in `TASK.md
 
 - Frontend: React, Vite, TypeScript, Ant Design, Tailwind CSS, shadcn/ui.
 - Backend: Node.js, Express.js, TypeScript.
-- Database: PostgreSQL on Neon.
+- Database: PostgreSQL on Railway.
 - ORM: Prisma.
 
 Inspect the existing code and configuration before making changes.

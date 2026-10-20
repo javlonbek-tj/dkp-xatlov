@@ -117,7 +117,7 @@
 **Objective:** Document reproducible local setup and migration workflow.
 **Dependencies:** P6-T1.
 **Expected changes:** Root and backend/frontend README files; `.env.example` files only.
-**Acceptance criteria:** Setup, Neon `DATABASE_URL`, secret handling, migrations, dev/build/test commands, and application access are documented without credentials.
+**Acceptance criteria:** Setup, Railway `DATABASE_URL`, secret handling, migrations, dev/build/test commands, and application access are documented without credentials.
 **Verification:** Follow README steps in a clean local setup and confirm commands succeed.
 
 ## Open business-rule questions

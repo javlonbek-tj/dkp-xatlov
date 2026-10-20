@@ -124,7 +124,8 @@ router.post('/users', adminOnly, async (request, response, next) => {
     const fullName = text(request.body?.fullName, 'Full name', 150);
     const userPassword = password(request.body?.password);
     const role = request.body?.role as UserRole;
-    if (!Object.values(UserRole).includes(role)) {
+    // District heads are created from their district so they are always linked to it.
+    if (!Object.values(UserRole).includes(role) || role === UserRole.DISTRICT_HEAD) {
       throw new ApiError(400, 'INVALID_ROLE', 'Choose a valid employee role');
     }
 
@@ -169,6 +170,9 @@ router.patch('/users/:userId', async (request, response, next) => {
       }
       if (role !== existing.role && existing._count.regionAssignments > 0) {
         throw new ApiError(409, 'ASSIGNMENTS_EXIST', 'Remove the user’s region assignments before changing their role');
+      }
+      if (role !== existing.role && (role === UserRole.DISTRICT_HEAD || existing.role === UserRole.DISTRICT_HEAD)) {
+        throw new ApiError(400, 'INVALID_ROLE', 'The district head role cannot be changed');
       }
       data.role = role;
     }
@@ -260,7 +264,7 @@ router.post('/regions/:regionId/assignments', async (request, response, next) =>
     await requireRegionAccess(request, regionId);
     const userId = text(request.body?.userId, 'User', 100);
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (!user || user.role === UserRole.ADMIN) {
+    if (!user || user.role === UserRole.ADMIN || user.role === UserRole.DISTRICT_HEAD) {
       throw new ApiError(400, 'INVALID_EMPLOYEE', 'Only employee accounts can be assigned to a region');
     }
     const assignment = await prisma.employeeRegionAssignment.create({ data: { userId, regionId } });

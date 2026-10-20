@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { employeeText, exportExcel } from './excel-export'
+import XatlovEmployeesTab from './XatlovEmployeesTab'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; engineerCount: number | null; regionId: string
@@ -206,7 +207,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlash amalga oshmadi') }
   }
 
-  return <div><Space direction="vertical" size="middle" className="w-full">
+  const districtTab = <div><Space direction="vertical" size="middle" className="w-full">
     {error && <Alert type="error" showIcon message={error} />}
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
@@ -224,6 +225,11 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     </Form>
   </Modal>
   </div>
+
+  return <Tabs items={[
+    { key: 'districts', label: 'Tumanlar bo‘yicha', children: districtTab },
+    { key: 'employees', label: 'Xodimlar kesimida', children: <XatlovEmployeesTab token={token} user={user} /> },
+  ]} />
 }
 
 export default XatlovPage

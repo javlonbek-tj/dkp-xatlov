@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { employeeText, exportExcel, type ExportHeader } from './excel-export'
 import { exportPdf } from './pdf-export'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
 type Employee = { fullName: string; phone: string | null } | null
 type ReportRow = {

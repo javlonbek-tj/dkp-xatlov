@@ -5,6 +5,7 @@ import AdminPanel from './AdminPanel'
 import AssignmentsPage from './AssignmentsPage'
 import ReportPage from './ReportPage'
 import XatlovPage from './XatlovPage'
+import XatlovEmployeesTab from './XatlovEmployeesTab'
 import MkdPage from './MkdPage'
 import RadLimitPage from './RadLimitPage'
 import OverdueApplicationsPage from './OverdueApplicationsPage'
@@ -16,7 +17,7 @@ type User = {
   id: string
   username: string
   fullName: string
-  role: 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
+  role: 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
   isGroupLeader?: boolean
 }
 
@@ -53,7 +54,7 @@ function App() {
 
       setToken(loginData.token)
       setUser(currentUserData.user)
-      setPage(currentUserData.user.role === 'ADMIN' ? 'admin' : 'dashboard')
+      setPage(currentUserData.user.role === 'ADMIN' ? 'admin' : currentUserData.user.role === 'DISTRICT_HEAD' ? 'xatlov' : 'dashboard')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Kirish amalga oshmadi')
     } finally {
@@ -85,7 +86,8 @@ function App() {
     const props = { token, user }
     return (
       <AppLayout user={user} page={page} error={error} onNavigate={setPage} onLogout={signOut}>
-        {page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
+        {user.role === 'DISTRICT_HEAD' ? <XatlovEmployeesTab {...props} />
+          : page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
           : page === 'assignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage {...props} />
           : page === 'report' ? <ReportPage {...props} />
           : page === 'xatlov' ? <XatlovPage {...props} />

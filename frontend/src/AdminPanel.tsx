@@ -16,7 +16,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type Employee = { id: string; username: string; fullName: string; phone?: string | null; role: Role }
 type RegionAssignment = { id: string; regionId: string; user: Employee }
 type Region = {
@@ -49,6 +49,7 @@ const roleLabels: Record<Role, string> = {
   REPUBLIC_EMPLOYEE: 'Respublika xodimi',
   REGIONAL_EMPLOYEE: 'Hududiy xodim',
   VIEWER: 'Kuzatuvchi',
+  DISTRICT_HEAD: 'Tuman rahbari',
 }
 
 async function api<T>(token: string, path: string, init?: RequestInit): Promise<T> {
@@ -216,7 +217,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
 
   const availableEmployees = (assignmentRegion?.employeeAssignments ?? []).map((item) => item.user.id)
   const availableUsers = users.filter((item) =>
-    item.role !== 'ADMIN' && !availableEmployees.includes(item.id),
+    item.role !== 'ADMIN' && item.role !== 'DISTRICT_HEAD' && !availableEmployees.includes(item.id),
   )
   const republicEmployees = (assignmentRegion?.employeeAssignments ?? [])
     .filter((item) => item.user.role === 'REPUBLIC_EMPLOYEE')
@@ -285,7 +286,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
     },
     {
       title: 'Turi', key: 'role', width: 160, align: 'center',
-      render: (_, assignment) => <Tag color={{ ADMIN: 'red', REPUBLIC_EMPLOYEE: 'blue', REGIONAL_EMPLOYEE: 'green', VIEWER: 'default' }[assignment.user.role]} className="!m-0">{roleLabels[assignment.user.role]}</Tag>,
+      render: (_, assignment) => <Tag color={{ ADMIN: 'red', REPUBLIC_EMPLOYEE: 'blue', REGIONAL_EMPLOYEE: 'green', VIEWER: 'default', DISTRICT_HEAD: 'orange' }[assignment.user.role]} className="!m-0">{roleLabels[assignment.user.role]}</Tag>,
     },
     {
       title: 'Biriktirilgan tumanlar', key: 'districts',
@@ -455,7 +456,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
           <Form.Item label="Telefon raqami" name="phone"><Input maxLength={30} placeholder="+998-90-123-45-67" /></Form.Item>
           {isAdmin && <>
             <Form.Item label="Turi" name="role" rules={[{ required: true }]}>
-              <Select options={Object.entries(roleLabels).map(([value, label]) => ({ value, label }))} />
+              <Select options={Object.entries(roleLabels).filter(([value]) => value !== 'DISTRICT_HEAD' || userEditor?.role === 'DISTRICT_HEAD').map(([value, label]) => ({ value, label }))} />
             </Form.Item>
             <Form.Item label={userEditor ? 'Yangi parol (ixtiyoriy)' : 'Parol'} name="password" rules={userEditor ? [] : [{ required: true }]}>
               <Input.Password maxLength={200} autoComplete="new-password" />

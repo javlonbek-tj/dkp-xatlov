@@ -13,6 +13,8 @@ enum UserRole {
   REGIONAL_EMPLOYEE
   // Read-only access to the regions the user is assigned to.
   VIEWER
+  // Enters the daily work of one district's employees; linked to that district, not to a region.
+  DISTRICT_HEAD
 }
 
 enum CallStatus {
@@ -28,13 +30,17 @@ model User {
   phone        String?
   passwordHash String
   role         UserRole
+  // Set only for district heads.
+  districtId   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  district          District?                  @relation("DistrictHeads", fields: [districtId], references: [id], onDelete: Restrict)
   regionAssignments EmployeeRegionAssignment[]
   sessions          Session[]
 
   @@index([role])
+  @@index([districtId])
 }
 
 model Session {
@@ -85,6 +91,8 @@ model District {
   radLimits     RadLimit[]
   overdueSnapshots OverdueSnapshot[]
   callLogs CallLog[]
+  heads     User[]             @relation("DistrictHeads")
+  employees DistrictEmployee[]
 
   @@unique([name, regionId])
   @@index([regionId])
@@ -178,6 +186,38 @@ model CallLog {
 
   @@unique([districtId, callDate])
   @@index([callDate, status])
+}
+
+// District staff without system accounts; the list is kept by the Republic employees of the region.
+model DistrictEmployee {
+  id         String   @id @default(cuid())
+  districtId String
+  fullName   String
+  position   String?
+  phone      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  district  District            @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  dailyWork EmployeeDailyWork[]
+
+  @@index([districtId])
+}
+
+// Daily census and migration counts of one district employee.
+model EmployeeDailyWork {
+  id             String   @id @default(cuid())
+  employeeId     String
+  recordDate     DateTime @db.Date
+  censusCount    Int
+  migrationCount Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee DistrictEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, recordDate])
+  @@index([recordDate])
 }
 
 model EmployeeRegionAssignment {

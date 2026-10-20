@@ -33,7 +33,7 @@ Avoid unnecessary libraries and duplicate UI solutions.
 - Node.js
 - Express.js
 - TypeScript
-- PostgreSQL hosted on Neon
+- PostgreSQL hosted on Railway
 - Prisma ORM
 
 Keep the frontend and backend separated into clear, maintainable parts.
@@ -278,7 +278,7 @@ Keep the interface consistent and straightforward.
 
 ## 13. Database Design
 
-Use Prisma ORM with PostgreSQL hosted on Neon.
+Use Prisma ORM with PostgreSQL hosted on Railway.
 
 Required core models may include:
 
@@ -301,7 +301,7 @@ Choose model names and relationships that fit the existing project structure.
 - Republic-level and regional assignments must be distinguishable.
 - Group leader designation must be supported.
 - Apply appropriate required-field, uniqueness, and relational constraints.
-- Use `DATABASE_URL` as an environment variable for the Neon PostgreSQL connection.
+- Use `DATABASE_URL` as an environment variable for the Railway PostgreSQL connection.
 - Never commit credentials or secrets to the repository.
 
 Avoid unnecessary database models and duplicate data.

@@ -33,7 +33,7 @@ The project uses:
 - Node.js
 - Express.js
 - TypeScript
-- PostgreSQL hosted on Neon
+- PostgreSQL hosted on Railway
 - Prisma ORM
 
 The repository structure includes:

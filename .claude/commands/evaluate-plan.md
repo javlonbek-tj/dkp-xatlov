@@ -44,7 +44,7 @@ Review the plan using these criteria:
 
 **Technical correctness**
 
-- Does the plan match the existing React, Vite, Express, TypeScript, Prisma, and Neon PostgreSQL setup?
+- Does the plan match the existing React, Vite, Express, TypeScript, Prisma, and Railway PostgreSQL setup?
 - Does it account for frontend/backend integration?
 - Does it avoid duplicate data and inconsistent employee assignments?
 - Does it include appropriate validation, authentication, and access control?

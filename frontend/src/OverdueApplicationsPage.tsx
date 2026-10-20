@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
 type Employee = { fullName: string; phone: string | null }
 type District = {

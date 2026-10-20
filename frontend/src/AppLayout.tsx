@@ -16,7 +16,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role; isGroupLeader?: boolean }
 export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'calls'
 
@@ -25,6 +25,7 @@ const roleLabels: Record<Role, string> = {
   REPUBLIC_EMPLOYEE: 'Respublika xodimi',
   REGIONAL_EMPLOYEE: 'Hududiy xodim',
   VIEWER: 'Kuzatuvchi',
+  DISTRICT_HEAD: 'Tuman rahbari',
 }
 
 const pageLabels: Record<Page, string> = {
@@ -50,7 +51,10 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
   const isDesktop = screens.lg ?? true
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const items: MenuProps['items'] = [
+  // District heads only enter their employees' daily work on the Xatlov page.
+  const items: MenuProps['items'] = user.role === 'DISTRICT_HEAD' ? [
+    { type: 'group', label: 'Monitoring', children: [{ key: 'xatlov', icon: <FileSearchOutlined />, label: pageLabels.xatlov }] },
+  ] : [
     { type: 'group', label: 'Monitoring', children: [
       { key: 'dashboard', icon: <HomeOutlined />, label: pageLabels.dashboard },
       { key: 'report', icon: <TableOutlined />, label: pageLabels.report },
