@@ -12,9 +12,11 @@ type Head = { id: string; username: string; fullName: string; phone: string | nu
 type District = { id: string; name: string; regionId: string; region: { id: string; name: string }; heads?: Head[] }
 type WorkRecord = { id: string; recordDate: string; censusCount: number; migrationCount: number }
 type Employee = {
-  id: string; districtId: string; fullName: string; position: string | null; phone: string | null
+  id: string; districtId: string; fullName: string; position: string | null; phone: string | null; note: string | null
   district: { id: string; name: string; region: { id: string; name: string } }
   record: WorkRecord | null
+  // Monday to Friday of the selected date's week, up to that date.
+  weeklyCensusCount: number; weeklyMigrationCount: number
 }
 type ApiData = { districts: District[]; employees: Employee[]; canManage: boolean }
 type WorkValues = { censusCount: number; migrationCount: number }
@@ -23,6 +25,8 @@ type PersonEditor = { kind: 'employee'; employee?: Employee } | { kind: 'head'; 
 type Change = { path: string; method: 'POST' | 'PATCH' | 'DELETE'; body?: object; update?: (data: ApiData) => ApiData }
 const emptyData: ApiData = { districts: [], employees: [], canManage: false }
 const isPending = (row: Employee) => isOptimistic(row.id) || (!!row.record && isOptimistic(row.record.id))
+// Number of employees with the lowest weekly migration that are shown in red.
+const lowestCount = 3
 
 function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
   const [error, setError] = useState<string | null>(null)
@@ -62,13 +66,19 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
 
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
-  const visible = data.employees.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.fullName, row.position, row.phone]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  // The employees with the lowest weekly migration come first.
+  const visible = data.employees
+    .filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.fullName, row.position, row.phone, row.note]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+    .sort((a, b) => a.weeklyMigrationCount - b.weeklyMigrationCount)
+  const lowest = new Set(visible.slice(0, lowestCount).map((row) => row.id))
   const staffDistrict = data.districts.find((item) => item.id === staffDistrictId)
   const staff = data.employees.filter((row) => row.districtId === staffDistrictId)
   const totals = {
     entered: visible.filter((row) => row.record).length,
     census: visible.reduce((sum, row) => sum + (row.record?.censusCount ?? 0), 0),
     migration: visible.reduce((sum, row) => sum + (row.record?.migrationCount ?? 0), 0),
+    weeklyCensus: visible.reduce((sum, row) => sum + row.weeklyCensusCount, 0),
+    weeklyMigration: visible.reduce((sum, row) => sum + row.weeklyMigrationCount, 0),
   }
 
   function openWorkEditor(employee: Employee) {
@@ -80,11 +90,17 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     if (!workEditor) return
     const base = `/districts/${workEditor.districtId}/employees/${workEditor.id}/records`
     const recordDate = filters.date.format('YYYY-MM-DD')
+    // Saturday and Sunday records are not part of the Monday–Friday totals.
+    const inWeek = filters.date.day() >= 1 && filters.date.day() <= 5
+    const weekly = (item: Employee) => inWeek ? {
+      weeklyCensusCount: item.weeklyCensusCount + values.censusCount - (item.record?.censusCount ?? 0),
+      weeklyMigrationCount: item.weeklyMigrationCount + values.migrationCount - (item.record?.migrationCount ?? 0),
+    } : {}
     change.mutate({
       path: workEditor.record ? `${base}/${workEditor.record.id}` : base,
       method: workEditor.record ? 'PATCH' : 'POST',
       body: { ...values, recordDate },
-      update: updateEmployee(workEditor.id, (item) => ({ ...item, record: { id: item.record?.id ?? optimisticId(), recordDate, ...values } })),
+      update: updateEmployee(workEditor.id, (item) => ({ ...item, ...weekly(item), record: { id: item.record?.id ?? optimisticId(), recordDate, ...values } })),
     })
     setWorkEditor(null)
   }
@@ -92,22 +108,22 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
   function openPersonEditor(editor: PersonEditor) {
     setPersonEditor(editor)
     const person = editor.kind === 'employee' ? editor.employee : editor.head
-    personForm.setFieldsValue({ fullName: person?.fullName, phone: person?.phone, position: editor.kind === 'employee' ? editor.employee?.position : undefined, username: undefined, password: undefined })
+    personForm.setFieldsValue({ fullName: person?.fullName, phone: person?.phone, position: editor.kind === 'employee' ? editor.employee?.position : undefined, note: editor.kind === 'employee' ? editor.employee?.note : undefined, username: undefined, password: undefined })
   }
 
-  async function savePerson(values: { fullName: string; phone?: string; position?: string; username?: string; password?: string }) {
+  async function savePerson(values: { fullName: string; phone?: string; position?: string; note?: string; username?: string; password?: string }) {
     if (!personEditor || !staffDistrictId) return
     const district = data.districts.find((item) => item.id === staffDistrictId)
     if (personEditor.kind === 'employee') {
       const employee = personEditor.employee
-      const fields = { fullName: values.fullName.trim(), phone: values.phone?.trim() || null, position: values.position?.trim() || null }
+      const fields = { fullName: values.fullName.trim(), phone: values.phone?.trim() || null, position: values.position?.trim() || null, note: values.note?.trim() || null }
       const base = `/districts/${staffDistrictId}/employees`
       change.mutate({
         path: employee ? `${base}/${employee.id}` : base,
         method: employee ? 'PATCH' : 'POST',
-        body: { fullName: values.fullName, phone: values.phone, position: values.position },
+        body: { fullName: values.fullName, phone: values.phone, position: values.position, note: values.note },
         update: employee ? updateEmployee(employee.id, (item) => ({ ...item, ...fields }))
-          : (old) => !district ? old : ({ ...old, employees: [...old.employees, { ...fields, id: optimisticId(), districtId: district.id, district, record: null }] }),
+          : (old) => !district ? old : ({ ...old, employees: [...old.employees, { ...fields, id: optimisticId(), districtId: district.id, district, record: null, weeklyCensusCount: 0, weeklyMigrationCount: 0 }] }),
       })
       setPersonEditor(null)
       return
@@ -134,19 +150,28 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
 
   function exportTable() {
     void exportExcel(`xatlov-xodimlar-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
-      'Hudud', 'Tuman', 'F.I.Sh.', 'Lavozim', 'Telefon', 'Xatlov soni', 'Migratsiya soni',
+      'Hudud', 'Tuman', 'F.I.Sh.', 'Lavozim', 'Telefon', 'Izoh',
+      { title: 'Kunlik', children: ['Xatlov soni', 'Migratsiya soni'] },
+      { title: 'Haftalik (Du–Ju)', children: ['Xatlov soni', 'Migratsiya soni'] },
     ], [
-      ['Jami', '', `${visible.length} ta xodim (${totals.entered} ta kiritilgan)`, '', '', totals.census, totals.migration],
-      ...visible.map((row) => [row.district.region.name, row.district.name, row.fullName, row.position, row.phone, row.record?.censusCount, row.record?.migrationCount]),
-    ], { totalRows: 1 })
+      ['Jami', '', `${visible.length} ta xodim (${totals.entered} ta kiritilgan)`, '', '', '', totals.census, totals.migration, totals.weeklyCensus, totals.weeklyMigration],
+      ...visible.map((row) => [row.district.region.name, row.district.name, row.fullName, row.position, row.phone, row.note, row.record?.censusCount, row.record?.migrationCount, row.weeklyCensusCount, row.weeklyMigrationCount]),
+    ], { totalRows: 1, highlight: (row, column) => column === 9 && row > 0 && lowest.has(visible[row - 1].id) })
   }
 
   const columns: ColumnsType<Employee> = [
     { title: 'Tuman', key: 'district', width: 190, render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
     { title: 'F.I.Sh.', key: 'fullName', width: 220, render: (_, row) => <div className="truncate leading-tight" title={row.fullName}>{row.fullName}{row.phone && <div className="text-xs text-slate-500">{row.phone}</div>}</div> },
-    { title: 'Lavozim', dataIndex: 'position', width: 170, ellipsis: true, render: (value: string | null) => value ?? '—' },
-    { title: 'Xatlov soni', key: 'censusCount', width: 110, align: 'center', render: (_, row) => row.record ? row.record.censusCount.toLocaleString('ru-RU') : '—' },
-    { title: 'Migratsiya soni', key: 'migrationCount', width: 130, align: 'center', render: (_, row) => row.record ? <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{row.record.migrationCount.toLocaleString('ru-RU')}</Tag> : '—' },
+    // The note (e.g. on leave) is shown under the position so the reason for missing work is visible.
+    { title: 'Lavozim', key: 'position', width: 170, render: (_, row) => <div className="truncate leading-tight" title={[row.position, row.note].filter(Boolean).join(' · ')}>{row.position ?? '—'}{row.note && <div className="text-xs text-orange-600">{row.note}</div>}</div> },
+    { title: 'Kunlik', children: [
+      { title: 'Xatlov soni', key: 'censusCount', width: 110, align: 'center', render: (_, row) => row.record ? row.record.censusCount.toLocaleString('ru-RU') : '—' },
+      { title: 'Migratsiya soni', key: 'migrationCount', width: 130, align: 'center', render: (_, row) => row.record ? <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{row.record.migrationCount.toLocaleString('ru-RU')}</Tag> : '—' },
+    ] },
+    { title: 'Haftalik (Du–Ju)', children: [
+      { title: 'Xatlov soni', key: 'weeklyCensusCount', width: 110, align: 'center', render: (_, row) => row.weeklyCensusCount.toLocaleString('ru-RU') },
+      { title: 'Migratsiya soni', key: 'weeklyMigrationCount', width: 130, align: 'center', onCell: (row) => lowest.has(row.id) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}, render: (_, row) => row.weeklyMigrationCount.toLocaleString('ru-RU') },
+    ] },
     ...(data.canManage || isHead ? [{
       title: 'Amallar', key: 'actions', width: 120, align: 'center',
       // District heads add a record once; only Administrators and Republic employees change it afterwards.
@@ -162,7 +187,9 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
       <Table.Summary.Cell index={1} colSpan={2}>{visible.length} ta xodim ({totals.entered} ta kiritilgan)</Table.Summary.Cell>
       <Table.Summary.Cell index={3} align="center">{totals.census.toLocaleString('ru-RU')}</Table.Summary.Cell>
       <Table.Summary.Cell index={4} align="center"><Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{totals.migration.toLocaleString('ru-RU')}</Tag></Table.Summary.Cell>
-      {(data.canManage || isHead) && <Table.Summary.Cell index={5} />}
+      <Table.Summary.Cell index={5} align="center">{totals.weeklyCensus.toLocaleString('ru-RU')}</Table.Summary.Cell>
+      <Table.Summary.Cell index={6} align="center"><Tag color="purple" className="!m-0 min-w-10 text-center !font-semibold">{totals.weeklyMigration.toLocaleString('ru-RU')}</Tag></Table.Summary.Cell>
+      {(data.canManage || isHead) && <Table.Summary.Cell index={7} />}
     </Table.Summary.Row>
   </Table.Summary> : null
 
@@ -170,6 +197,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     { title: 'F.I.Sh.', dataIndex: 'fullName', ellipsis: true },
     { title: 'Lavozim', dataIndex: 'position', ellipsis: true, render: (value: string | null) => value ?? '—' },
     { title: 'Telefon', dataIndex: 'phone', width: 150, render: (value: string | null) => value ?? '—' },
+    { title: 'Izoh', dataIndex: 'note', width: 180, ellipsis: true, render: (value: string | null) => value ?? '—' },
     { title: 'Amallar', key: 'actions', width: 190, render: (_, row) => isPending(row) ? <span className="text-slate-400">Saqlanmoqda…</span> : <Space>
       <Button size="small" onClick={() => openPersonEditor({ kind: 'employee', employee: row })}>Tahrirlash</Button>
       <Popconfirm title="Xodimni o‘chirasizmi?" onConfirm={() => removeEmployee(row)}>
@@ -206,7 +234,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
           {data.canManage && <Select placeholder="Tuman xodimlari ro‘yxati" className="min-w-64" value={null} options={filterDistricts.filter((item) => !filters.districtId || item.id === filters.districtId).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id: string) => setStaffDistrictId(id)} />}
         </Space>
       </div>
-      <Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visible} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 16, showSizeChanger: true, pageSizeOptions: [16, 50, 100] }} scroll={{ x: 940 }} locale={{ emptyText: 'Tuman xodimlari topilmadi' }} />
+      <Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visible} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 16, showSizeChanger: true, pageSizeOptions: [16, 50, 100] }} scroll={{ x: 1180 }} locale={{ emptyText: 'Tuman xodimlari topilmadi' }} />
     </Card>
   </Space>
 
@@ -237,6 +265,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
       <Form.Item label="F.I.Sh." name="fullName" rules={[{ required: true, message: 'F.I.Sh.ni kiriting' }]}><Input maxLength={150} /></Form.Item>
       {personEditor?.kind === 'employee' && <Form.Item label="Lavozim" name="position"><Input maxLength={150} /></Form.Item>}
       <Form.Item label="Telefon raqami" name="phone"><Input maxLength={30} placeholder="+998-90-123-45-67" /></Form.Item>
+      {personEditor?.kind === 'employee' && <Form.Item label="Izoh" name="note" extra="Masalan, mehnat ta’tilida yoki o‘qishda"><Input.TextArea maxLength={300} autoSize={{ minRows: 2, maxRows: 4 }} /></Form.Item>}
       {personEditor?.kind === 'head' && <>
         {!personEditor.head && <Form.Item label="Foydalanuvchi nomi" name="username" rules={[{ required: true, message: 'Foydalanuvchi nomini kiriting' }]}><Input maxLength={100} autoComplete="off" /></Form.Item>}
         <Form.Item label={personEditor.head ? 'Yangi parol (ixtiyoriy)' : 'Parol'} name="password" rules={personEditor.head ? [] : [{ required: true, message: 'Parolni kiriting' }]}><Input.Password maxLength={200} autoComplete="new-password" /></Form.Item>

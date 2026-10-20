@@ -353,3 +353,17 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 
 - The "Xodimlar kesimida" table uses the compact (`small`) size so 16 rows fit on screen with less scrolling.
 - Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov employees tab - Weekly (Du–Ju) totals and lowest migration first
+
+- `GET /api/district-employees` now also returns `weeklyCensusCount` and `weeklyMigrationCount` per employee: Monday to Friday of the selected date's week, up to that date (same rule as the district tab).
+- The table groups columns into "Kunlik" and "Haftalik (Du–Ju)", with weekly totals in the summary row and the Excel export.
+- Rows are sorted by weekly migration, lowest first; the three lowest have the weekly migration cell in red (also in Excel). Optimistic saves adjust the weekly totals for weekday dates.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## District employees - Note (izoh)
+
+- `DistrictEmployee.note` (optional text, up to 300 chars) for cases such as annual leave or study; migration `20261021000000_district_employee_note` applied on Railway.
+- Employee create/edit accepts `note`; the add/edit form has an "Izoh" field.
+- The note is shown in orange under the position in the employees table, as a column in the staff list window, in search and in the Excel export.
+- Verified with `prisma migrate deploy`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

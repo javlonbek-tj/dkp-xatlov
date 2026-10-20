@@ -101,7 +101,7 @@ function mapDatabaseError(error: unknown, next: NextFunction): void {
   next(error);
 }
 
-// Employees in scope with their work on the given date.
+// Employees in scope with their work on the given date and their Monday–Friday totals for that week.
 router.get('/', async (request, response, next) => {
   try {
     const user = request.auth!;
@@ -111,6 +111,12 @@ router.get('/', async (request, response, next) => {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
     const date = parseDate(request.query.date);
+    // Weekly totals cover Monday to Friday of the selected date's week, up to the selected date, as on the district tab.
+    const weekStart = new Date(date);
+    weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    const friday = new Date(weekStart);
+    friday.setUTCDate(weekStart.getUTCDate() + 4);
+    const weekEnd = date < friday ? date : friday;
     const scope = districtScope(user);
     const locationFilter: Prisma.DistrictWhereInput = {
       ...scope,
@@ -131,13 +137,21 @@ router.get('/', async (request, response, next) => {
         orderBy: [{ district: { region: { name: 'asc' } } }, { district: { name: 'asc' } }, { fullName: 'asc' }],
         include: {
           district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-          dailyWork: { where: { recordDate: date } },
+          dailyWork: { where: { recordDate: { gte: weekStart, lte: date } } },
         },
       }),
     ]);
     response.json({
       districts,
-      employees: employees.map(({ dailyWork, ...employee }) => ({ ...employee, record: dailyWork[0] ?? null })),
+      employees: employees.map(({ dailyWork, ...employee }) => {
+        const week = dailyWork.filter((work) => work.recordDate <= weekEnd);
+        return {
+          ...employee,
+          record: dailyWork.find((work) => work.recordDate.getTime() === date.getTime()) ?? null,
+          weeklyCensusCount: week.reduce((sum, work) => sum + work.censusCount, 0),
+          weeklyMigrationCount: week.reduce((sum, work) => sum + work.migrationCount, 0),
+        };
+      }),
       canManage: canManage(user),
     });
   } catch (error) { next(error); }
@@ -152,6 +166,7 @@ router.post('/districts/:districtId/employees', async (request, response, next) 
         fullName: text(request.body?.fullName, 'Full name', 150),
         position: optionalText(request.body?.position, 'Position', 150),
         phone: optionalPhone(request.body?.phone),
+        note: optionalText(request.body?.note, 'Note', 300),
       },
     });
     response.status(201).json({ employee });
@@ -169,6 +184,7 @@ router.patch('/districts/:districtId/employees/:employeeId', async (request, res
         fullName: text(request.body?.fullName, 'Full name', 150),
         position: optionalText(request.body?.position, 'Position', 150),
         phone: optionalPhone(request.body?.phone),
+        note: optionalText(request.body?.note, 'Note', 300),
       },
     });
     response.json({ employee });
