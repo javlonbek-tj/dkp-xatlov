@@ -51,9 +51,13 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
   const isDesktop = screens.lg ?? true
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  // District heads only enter their employees' daily work on the Xatlov page.
+  // District heads enter their employees' daily work on the Xatlov page and see their own district's dashboard and report.
   const items: MenuProps['items'] = user.role === 'DISTRICT_HEAD' ? [
-    { type: 'group', label: 'Monitoring', children: [{ key: 'xatlov', icon: <FileSearchOutlined />, label: pageLabels.xatlov }] },
+    { type: 'group', label: 'Monitoring', children: [
+      { key: 'dashboard', icon: <HomeOutlined />, label: pageLabels.dashboard },
+      { key: 'report', icon: <TableOutlined />, label: pageLabels.report },
+      { key: 'xatlov', icon: <FileSearchOutlined />, label: pageLabels.xatlov },
+    ] },
   ] : [
     { type: 'group', label: 'Monitoring', children: [
       { key: 'dashboard', icon: <HomeOutlined />, label: pageLabels.dashboard },

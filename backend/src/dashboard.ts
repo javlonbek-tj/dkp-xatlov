@@ -1,7 +1,7 @@
 import express from 'express';
 import { Prisma, UserRole } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { requireAuth } from './auth.js';
+import { reportDistrictScope, requireAuth } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -29,12 +29,6 @@ function tashkentToday(now = new Date()) {
   return { date: new Date(`${part('year')}-${part('month')}-${part('day')}T00:00:00.000Z`), month: Number(part('month')), year: Number(part('year')) };
 }
 
-// Republic and regional employees see figures for every district in the regions they are assigned to.
-function districtScope(userId: string, role: UserRole): Prisma.DistrictWhereInput {
-  if (role === UserRole.ADMIN) return {};
-  return { region: { employeeAssignments: { some: { userId } } } };
-}
-
 function sum<T>(values: readonly T[], get: (value: T) => number): number {
   return values.reduce((total, value) => total + get(value), 0);
 }
@@ -51,8 +45,8 @@ router.get('/', requireAuth, async (request, response, next) => {
     if (from && to && from > to) throw new ApiError(400, 'INVALID_FILTER', 'The start date must not be after the end date');
 
     const user = request.auth!;
-    const scope = districtScope(user.id, user.role);
-    const regionScope: Prisma.RegionWhereInput = user.role === UserRole.ADMIN ? {} : { employeeAssignments: { some: { userId: user.id } } };
+    const scope = reportDistrictScope(user);
+    const regionScope: Prisma.RegionWhereInput = user.role === UserRole.ADMIN ? {} : { districts: { some: scope } };
     const [accessibleDistricts, accessibleRegions] = await Promise.all([
       prisma.district.findMany({
         where: scope,

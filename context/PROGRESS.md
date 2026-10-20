@@ -336,3 +336,15 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 
 - The "Xodimlar kesimida" tab now opens on yesterday's date (as the district tab already did), so census and migration counts are entered for the previous day by default.
 - Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov employees tab - 16 rows per page
+
+- The "Xodimlar kesimida" table shows 16 rows per page by default (size options 16, 50, 100).
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## District head - Dashboard and report for own district
+
+- District heads now also see "Bosh sahifa" and "Hisobot" in the menu, next to Xatlov; no other pages.
+- Backend: new `reportDistrictScope` in `auth.ts` limits a district head to the district they head; used by `/api/report` and `/api/dashboard` only, so every other endpoint still returns nothing to them.
+- Dashboard region list is now derived from the readable districts (same result for existing roles).
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

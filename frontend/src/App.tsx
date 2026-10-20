@@ -89,7 +89,7 @@ function App() {
     const props = { token, user }
     return (
       <AppLayout user={user} page={page} error={error} onNavigate={setPage} onLogout={signOut}>
-        {user.role === 'DISTRICT_HEAD' ? <XatlovEmployeesTab {...props} />
+        {user.role === 'DISTRICT_HEAD' ? (page === 'report' ? <ReportPage {...props} /> : page === 'dashboard' ? <DashboardPage {...props} /> : <XatlovEmployeesTab {...props} />)
           : page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
           : page === 'assignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage {...props} />
           : page === 'report' ? <ReportPage {...props} />

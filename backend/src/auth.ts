@@ -79,6 +79,12 @@ export function readableDistrictScope(user: { id: string; role: UserRole }): Pri
   return { region: { employeeAssignments: { some: { userId: user.id } } } };
 }
 
+// The report and dashboard also let a district head see their own district; other pages stay closed to them.
+export function reportDistrictScope(user: { id: string; role: UserRole }): Prisma.DistrictWhereInput {
+  if (user.role === UserRole.DISTRICT_HEAD) return { heads: { some: { id: user.id } } };
+  return readableDistrictScope(user);
+}
+
 // Districts the user may add or edit records for, mirroring requireDistrictAccess('write'); null means every district.
 export async function writableDistrictIds(user: { id: string; role: UserRole }, allowGroupLeader = false): Promise<string[] | null> {
   if (user.role === UserRole.ADMIN) return null;

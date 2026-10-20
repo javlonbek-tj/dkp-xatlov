@@ -1,7 +1,7 @@
 import express from 'express';
 import { Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
-import { readableDistrictScope, requireAuth } from './auth.js';
+import { reportDistrictScope, requireAuth } from './auth.js';
 import { prisma } from './db.js';
 
 const router = express.Router();
@@ -35,7 +35,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       throw new ApiError(400, 'INVALID_FILTER', 'Region filter must be a string');
     }
 
-    const scope = readableDistrictScope(user);
+    const scope = reportDistrictScope(user);
     const regions = await prisma.region.findMany({
       where: { districts: { some: scope } },
       select: { id: true, name: true },
