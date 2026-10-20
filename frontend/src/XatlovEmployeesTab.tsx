@@ -27,7 +27,7 @@ const isPending = (row: Employee) => isOptimistic(row.id) || (!!row.record && is
 function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs() })
+  const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [workEditor, setWorkEditor] = useState<Employee | null>(null)
   const [staffDistrictId, setStaffDistrictId] = useState<string | null>(null)
   const [personEditor, setPersonEditor] = useState<PersonEditor | null>(null)

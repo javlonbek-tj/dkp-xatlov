@@ -324,3 +324,15 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Muddati o‘tgan arizalar page: "Barchasiga 0 kiritish" button (with confirmation, for Administrators and Republic employees) uses the selected date and region/district filter and reports how many districts got a zero record.
 - Files changed: `backend/src/overdue-applications.ts`, `frontend/src/OverdueApplicationsPage.tsx`, `context/PROGRESS.md`.
 - Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.
+
+## Login page - Redesigned form, autofill off
+
+- Login page reworked as a two-column card: a brand panel on the left (hidden on mobile) and the form on the right.
+- Browser autofill turned off: the form and the username field use `autoComplete="off"`, the password field `new-password`.
+- Added placeholders and autofocus; the username cannot be only spaces.
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov employees tab - Yesterday as default date
+
+- The "Xodimlar kesimida" tab now opens on yesterday's date (as the district tab already did), so census and migration counts are entered for the previous day by default.
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.

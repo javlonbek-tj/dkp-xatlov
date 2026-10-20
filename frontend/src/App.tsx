@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Form, Input, Space, Typography } from 'antd'
+import { Alert, Button, Form, Input, Space, Typography } from 'antd'
 import { LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons'
 import AdminPanel from './AdminPanel'
 import AssignmentsPage from './AssignmentsPage'
@@ -107,41 +107,59 @@ function App() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 p-4">
       <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-indigo-600/30 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-sky-500/20 blur-3xl" />
-      <Card className="relative w-full max-w-md !rounded-2xl !border-none !shadow-2xl">
-        <Space direction="vertical" size="large" className="w-full">
+      <div className="relative grid w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl md:grid-cols-2">
+        <div className="hidden flex-col justify-between bg-gradient-to-br from-indigo-600 to-sky-600 p-10 text-white md:flex">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500 text-xl text-white shadow-lg shadow-indigo-500/30">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 text-xl">
               <SafetyCertificateOutlined />
             </div>
-            <div>
-              <Typography.Title level={3} className="!mb-0">Xatlov</Typography.Title>
-              <Typography.Text type="secondary">Hisobingizga kiring</Typography.Text>
-            </div>
+            <span className="text-xl font-semibold">Xatlov</span>
           </div>
+          <div>
+            <h2 className="mb-3 text-3xl font-semibold leading-tight">Hududiy monitoring tizimi</h2>
+            <p className="text-indigo-100">Xatlov, MKD, RAD limit, muddati o‘tgan arizalar va qo‘ng‘iroqlar bo‘yicha kunlik ma’lumotlar bir joyda.</p>
+          </div>
+          <span className="text-sm text-indigo-200">© {new Date().getFullYear()} Xatlov</span>
+        </div>
 
-          {error && <Alert type="error" showIcon message={error} />}
+        <div className="p-8 sm:p-10">
+          <Space direction="vertical" size="large" className="w-full">
+            <div>
+              <div className="mb-6 flex items-center gap-3 md:hidden">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500 text-lg text-white">
+                  <SafetyCertificateOutlined />
+                </div>
+                <span className="text-lg font-semibold">Xatlov</span>
+              </div>
+              <Typography.Title level={2} className="!mb-1">Tizimga kirish</Typography.Title>
+              <Typography.Text type="secondary">Login va parolingizni kiriting</Typography.Text>
+            </div>
 
-          <Form<LoginValues> layout="vertical" size="large" onFinish={signIn} requiredMark={false}>
-            <Form.Item
-              label="Foydalanuvchi nomi"
-              name="username"
-              rules={[{ required: true, message: 'Foydalanuvchi nomini kiriting' }]}
-            >
-              <Input prefix={<UserOutlined className="text-slate-400" />} autoComplete="username" maxLength={100} />
-            </Form.Item>
-            <Form.Item
-              label="Parol"
-              name="password"
-              rules={[{ required: true, message: 'Parolni kiriting' }]}
-            >
-              <Input.Password prefix={<LockOutlined className="text-slate-400" />} autoComplete="current-password" maxLength={200} />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading} className="mt-2">
-              Kirish
-            </Button>
-          </Form>
-        </Space>
-      </Card>
+            {error && <Alert type="error" showIcon message={error} />}
+
+            {/* Browser autofill is turned off: the login and password are typed every time. */}
+            <Form<LoginValues> layout="vertical" size="large" onFinish={signIn} requiredMark={false} autoComplete="off" className="[&_.ant-form-item-label]:!pb-1">
+              <Form.Item
+                label="Login"
+                name="username"
+                rules={[{ required: true, whitespace: true, message: 'Loginni kiriting' }]}
+              >
+                <Input prefix={<UserOutlined className="text-slate-400" />} placeholder="Login" autoComplete="off" autoFocus maxLength={100} />
+              </Form.Item>
+              <Form.Item
+                label="Parol"
+                name="password"
+                rules={[{ required: true, message: 'Parolni kiriting' }]}
+              >
+                <Input.Password prefix={<LockOutlined className="text-slate-400" />} placeholder="Parol" autoComplete="new-password" maxLength={200} />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" block loading={loading} className="mt-2 !h-12 !rounded-xl !font-medium">
+                Kirish
+              </Button>
+            </Form>
+          </Space>
+        </div>
+      </div>
     </main>
   )
 }
