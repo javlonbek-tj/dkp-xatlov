@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { apiFetch } from './api'
 import { Alert, Button, Card, DatePicker, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -132,34 +134,22 @@ function employeeCell(employee: Employee) {
 }
 
 function ReportPage({ token }: { token: string; user: User }) {
-  const [data, setData] = useState<ReportData | null>(null)
   const [date, setDate] = useState(dayjs())
   const [regionId, setRegionId] = useState<string>()
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
+  const query = useQuery({
+    queryKey: ['report', token, date.format('YYYY-MM-DD'), regionId],
+    queryFn: () => {
       const params = new URLSearchParams({ date: date.format('YYYY-MM-DD') })
       if (regionId) params.set('regionId', regionId)
-      const response = await fetch(`/api/report?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Hisobotni yuklab bo‘lmadi')
-      setData(result as ReportData)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Hisobotni yuklab bo‘lmadi')
-    } finally {
-      setLoading(false)
-    }
-  }, [date, regionId, token])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0)
-    return () => window.clearTimeout(timer)
-  }, [load])
+      return apiFetch<ReportData>(token, `/api/report?${params}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? null
+  const error = pdfError ?? query.error?.message ?? null
+  const loading = query.isPending
 
   const districtLines = (data?.rows ?? []).map(toLine)
   const lines = data?.region ? [totalLine(districtLines, data.region), ...districtLines] : []
@@ -298,9 +288,10 @@ function ReportPage({ token }: { token: string; user: User }) {
     }
     const filename = `hisobot-${date.format('YYYY-MM-DD')}`
     if (format === 'pdf') {
+      setPdfError(null)
       setPdfLoading(true)
       exportPdf(filename, headers, rows, options)
-        .catch(() => setError('PDF faylni yaratib bo‘lmadi'))
+        .catch(() => setPdfError('PDF faylni yaratib bo‘lmadi'))
         .finally(() => setPdfLoading(false))
     }
     else void exportExcel(`${filename}.xlsx`, headers, rows, options)

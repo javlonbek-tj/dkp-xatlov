@@ -12,6 +12,7 @@ import OverdueApplicationsPage from './OverdueApplicationsPage'
 import DashboardPage from './DashboardPage'
 import CallLogPage from './CallLogPage'
 import AppLayout, { type Page } from './AppLayout'
+import { queryClient } from './api'
 
 type User = {
   id: string
@@ -77,6 +78,8 @@ function App() {
         return
       }
     }
+    // Drop cached data so the next user never sees the previous user's records.
+    queryClient.clear()
     setToken(null)
     setUser(null)
     setError(null)

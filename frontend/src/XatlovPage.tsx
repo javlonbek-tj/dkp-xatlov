@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { employeeText, exportExcel } from './excel-export'
 import XatlovEmployeesTab from './XatlovEmployeesTab'
+import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -28,6 +30,24 @@ type Values = {
   completedMfyNames: string
 }
 
+type Payload = Pick<RecordRow, 'recordDate' | 'completedMfyCount' | 'censusCount' | 'completedObjectCount' | 'migrationCount' | 'completedMfyNames'> & { paymentDebt: number | null }
+type SaveInput = { districtId: string; record?: RecordRow; payload: Payload }
+const emptyData: ApiData = { districts: [], records: [], writableDistrictIds: [] }
+
+// Rows as they will look after the save, shown until the server answers; weekly totals are adjusted by the change.
+function optimisticRecords(data: ApiData, shownDate: string, { districtId, payload, record }: SaveInput): ApiData {
+  const district = data.districts.find((item) => item.id === districtId)
+  if (!district) return data
+  const saved: RecordRow = {
+    ...payload, paymentDebt: payload.paymentDebt === null ? null : String(payload.paymentDebt),
+    id: record?.id ?? optimisticId(), districtId, district,
+    weeklyCensusCount: (record?.weeklyCensusCount ?? 0) + payload.censusCount - (record?.censusCount ?? 0),
+    weeklyMigrationCount: (record?.weeklyMigrationCount ?? 0) + payload.migrationCount - (record?.migrationCount ?? 0),
+    weeklyDays: record?.weeklyDays ?? 1,
+  }
+  return { ...data, records: applySaved(data.records, shownDate, saved, record?.id) }
+}
+
 // Migration per Xatlov employee per worked day of the week.
 function perEmployeeDay(migration: number, employeeDays: number) {
   return employeeDays > 0 ? Math.round((migration / employeeDays) * 100) / 100 : null
@@ -40,33 +60,40 @@ function employeeCell(user?: { fullName: string; phone?: string | null }) {
 }
 
 function XatlovPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<ApiData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: RecordRow } | null>(null)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
+  const queryKey = ['xatlov', token, filters.date.format('YYYY-MM-DD'), filters.regionId, filters.districtId] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ date: queryKey[2] })
+      if (filters.regionId) params.set('regionId', filters.regionId)
+      if (filters.districtId) params.set('districtId', filters.districtId)
+      return apiFetch<ApiData>(token, `/api/xatlov?${params}`)
+    },
+    // Keep showing the previous result while another date or filter loads.
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? emptyData
+  const shownError = error ?? query.error?.message ?? null
   const canWrite = user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
   const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
-  const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ date: filters.date.format('YYYY-MM-DD') })
-      if (filters.regionId) params.set('regionId', filters.regionId)
-      if (filters.districtId) params.set('districtId', filters.districtId)
-      const response = await fetch(`/api/xatlov?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Ma’lumotlarni yuklab bo‘lmadi')
-      setData(result as ApiData)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Ma’lumotlarni yuklab bo‘lmadi')
-    } finally { setLoading(false) }
-  }, [filters, token])
+  // The table changes at once; the server answer replaces it, and a failed save restores the previous rows.
+  const saveMutation = useOptimisticMutation<ApiData, SaveInput>({
+    queryKey, invalidate: ['xatlov'],
+    mutationFn: ({ districtId, record, payload }) => apiFetch(token,
+      record ? `/api/xatlov/districts/${districtId}/records/${record.id}` : `/api/xatlov/districts/${districtId}`,
+      { method: record ? 'PATCH' : 'POST', body: JSON.stringify(payload) }),
+    update: (old, input) => optimisticRecords(old, queryKey[2], input),
+    onError: setError,
+    onSuccess: () => setError(null),
+  })
 
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load])
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
   const visibleRecords = data.records.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName, row.recordDate, row.completedMfyNames]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
@@ -183,12 +210,12 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     ] },
     { title: 'Tugallangan MFY nomlari', key: 'completedMfyNames', width: 220, ellipsis: true, render: (_, row) => row.completedMfyNames.join(', ') || '—' },
     { title: 'Sana', dataIndex: 'recordDate', width: 110, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RecordRow) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RecordRow>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RecordRow) => canEdit(row.districtId) && <Button size="small" disabled={isOptimistic(row.id)} onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RecordRow>[number]] : []),
   ]
 
-  async function save(values: Values) {
+  function save(values: Values) {
     if (!editor) return
-    const payload = {
+    const payload: Payload = {
       recordDate: values.recordDate.format('YYYY-MM-DD'),
       completedMfyCount: values.completedMfyCount,
       censusCount: values.censusCount,
@@ -197,24 +224,18 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       paymentDebt: values.paymentDebt ?? null,
       completedMfyNames: values.completedMfyNames.split('\n').map((name) => name.trim()).filter(Boolean),
     }
-    try {
-      const path = editor.record ? `/api/xatlov/districts/${editor.districtId}/records/${editor.record.id}` : `/api/xatlov/districts/${editor.districtId}`
-      const response = await fetch(path, { method: editor.record ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Saqlash amalga oshmadi')
-      setEditor(null)
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlash amalga oshmadi') }
+    saveMutation.mutate({ districtId: editor.districtId, record: editor.record, payload })
+    setEditor(null)
   }
 
   const districtTab = <div><Space direction="vertical" size="middle" className="w-full">
-    {error && <Alert type="error" showIcon message={error} />}
+    {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <DatePicker allowClear={false} value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2030 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2030 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>

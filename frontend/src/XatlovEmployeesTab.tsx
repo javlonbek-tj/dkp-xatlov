@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
+import { apiFetch, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -18,11 +20,12 @@ type ApiData = { districts: District[]; employees: Employee[]; canManage: boolea
 type WorkValues = { censusCount: number; migrationCount: number }
 // Staff list and district head accounts edited in the "Tuman xodimlari" window.
 type PersonEditor = { kind: 'employee'; employee?: Employee } | { kind: 'head'; head?: Head }
+type Change = { path: string; method: 'POST' | 'PATCH' | 'DELETE'; body?: object; update?: (data: ApiData) => ApiData }
+const emptyData: ApiData = { districts: [], employees: [], canManage: false }
+const isPending = (row: Employee) => isOptimistic(row.id) || (!!row.record && isOptimistic(row.record.id))
 
 function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<ApiData>({ districts: [], employees: [], canManage: false })
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs() })
   const [workEditor, setWorkEditor] = useState<Employee | null>(null)
@@ -32,40 +35,30 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
   const [personForm] = Form.useForm()
   const isHead = user.role === 'DISTRICT_HEAD'
 
-  const api = useCallback(async (path: string, init?: RequestInit) => {
-    const response = await fetch(`/api/district-employees${path}`, {
-      ...init,
-      headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}` },
-    })
-    const result = response.status === 204 ? null : await response.json()
-    if (!response.ok) throw new Error(result?.error?.message ?? 'So‘rov bajarilmadi')
-    return result
-  }, [token])
-
-  const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ date: filters.date.format('YYYY-MM-DD') })
+  const queryKey = ['district-employees', token, filters.date.format('YYYY-MM-DD'), filters.regionId, filters.districtId] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ date: queryKey[2] })
       if (filters.regionId) params.set('regionId', filters.regionId)
       if (filters.districtId) params.set('districtId', filters.districtId)
-      setData(await api(`?${params}`) as ApiData)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Ma’lumotlarni yuklab bo‘lmadi')
-    } finally { setLoading(false) }
-  }, [api, filters])
+      return apiFetch<ApiData>(token, `/api/district-employees?${params}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? emptyData
+  const shownError = error ?? query.error?.message ?? null
 
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load])
-
-  async function run(action: () => Promise<unknown>) {
-    try {
-      await action()
-      await load()
-      return true
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Amal bajarilmadi')
-      return false
-    }
-  }
+  // Every change goes through here; `update` shows its result in the table at once and is undone if the server refuses it.
+  const change = useOptimisticMutation<ApiData, Change>({
+    queryKey, invalidate: ['district-employees'],
+    mutationFn: ({ path, method, body }) => apiFetch(token, `/api/district-employees${path}`, { method, body: body && JSON.stringify(body) }),
+    update: (old, input) => input.update ? input.update(old) : old,
+    onError: setError,
+    onSuccess: () => setError(null),
+  })
+  const updateEmployee = (id: string, patch: (employee: Employee) => Employee) => (old: ApiData) =>
+    ({ ...old, employees: old.employees.map((item) => item.id === id ? patch(item) : item) })
 
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
@@ -83,14 +76,17 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     workForm.setFieldsValue({ censusCount: employee.record?.censusCount ?? 0, migrationCount: employee.record?.migrationCount ?? 0 })
   }
 
-  async function saveWork(values: WorkValues) {
+  function saveWork(values: WorkValues) {
     if (!workEditor) return
     const base = `/districts/${workEditor.districtId}/employees/${workEditor.id}/records`
-    const success = await run(() => api(workEditor.record ? `${base}/${workEditor.record.id}` : base, {
+    const recordDate = filters.date.format('YYYY-MM-DD')
+    change.mutate({
+      path: workEditor.record ? `${base}/${workEditor.record.id}` : base,
       method: workEditor.record ? 'PATCH' : 'POST',
-      body: JSON.stringify({ ...values, recordDate: filters.date.format('YYYY-MM-DD') }),
-    }))
-    if (success) setWorkEditor(null)
+      body: { ...values, recordDate },
+      update: updateEmployee(workEditor.id, (item) => ({ ...item, record: { id: item.record?.id ?? optimisticId(), recordDate, ...values } })),
+    })
+    setWorkEditor(null)
   }
 
   function openPersonEditor(editor: PersonEditor) {
@@ -101,13 +97,39 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
 
   async function savePerson(values: { fullName: string; phone?: string; position?: string; username?: string; password?: string }) {
     if (!personEditor || !staffDistrictId) return
-    const base = `/districts/${staffDistrictId}/${personEditor.kind === 'employee' ? 'employees' : 'heads'}`
-    const id = personEditor.kind === 'employee' ? personEditor.employee?.id : personEditor.head?.id
-    const payload = personEditor.kind === 'employee'
-      ? { fullName: values.fullName, phone: values.phone, position: values.position }
-      : { fullName: values.fullName, phone: values.phone, ...(id ? {} : { username: values.username }), ...(values.password ? { password: values.password } : {}) }
-    const success = await run(() => api(id ? `${base}/${id}` : base, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(payload) }))
-    if (success) setPersonEditor(null)
+    const district = data.districts.find((item) => item.id === staffDistrictId)
+    if (personEditor.kind === 'employee') {
+      const employee = personEditor.employee
+      const fields = { fullName: values.fullName.trim(), phone: values.phone?.trim() || null, position: values.position?.trim() || null }
+      const base = `/districts/${staffDistrictId}/employees`
+      change.mutate({
+        path: employee ? `${base}/${employee.id}` : base,
+        method: employee ? 'PATCH' : 'POST',
+        body: { fullName: values.fullName, phone: values.phone, position: values.position },
+        update: employee ? updateEmployee(employee.id, (item) => ({ ...item, ...fields }))
+          : (old) => !district ? old : ({ ...old, employees: [...old.employees, { ...fields, id: optimisticId(), districtId: district.id, district, record: null }] }),
+      })
+      setPersonEditor(null)
+      return
+    }
+    // A head account can be refused (e.g. a taken username), so its window stays open until the server accepts it.
+    const id = personEditor.head?.id
+    const base = `/districts/${staffDistrictId}/heads`
+    try {
+      await change.mutateAsync({
+        path: id ? `${base}/${id}` : base,
+        method: id ? 'PATCH' : 'POST',
+        body: { fullName: values.fullName, phone: values.phone, ...(id ? {} : { username: values.username }), ...(values.password ? { password: values.password } : {}) },
+      })
+      setPersonEditor(null)
+    } catch { /* The error is shown by the mutation. */ }
+  }
+
+  function removeEmployee(row: Employee) {
+    change.mutate({
+      path: `/districts/${row.districtId}/employees/${row.id}`, method: 'DELETE',
+      update: (old) => ({ ...old, employees: old.employees.filter((item) => item.id !== row.id) }),
+    })
   }
 
   function exportTable() {
@@ -128,8 +150,8 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     ...(data.canManage || isHead ? [{
       title: 'Amallar', key: 'actions', width: 120, align: 'center',
       // District heads add a record once; only Administrators and Republic employees change it afterwards.
-      render: (_: unknown, row: Employee) => !row.record ? <Button size="small" type="primary" onClick={() => openWorkEditor(row)}>Kiritish</Button>
-        : data.canManage ? <Button size="small" onClick={() => openWorkEditor(row)}>Tahrirlash</Button>
+      render: (_: unknown, row: Employee) => !row.record ? <Button size="small" type="primary" disabled={isPending(row)} onClick={() => openWorkEditor(row)}>Kiritish</Button>
+        : data.canManage ? <Button size="small" disabled={isPending(row)} onClick={() => openWorkEditor(row)}>Tahrirlash</Button>
         : <Tag color="green" className="!m-0">Kiritilgan</Tag>,
     } as ColumnsType<Employee>[number]] : []),
   ]
@@ -148,9 +170,9 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     { title: 'F.I.Sh.', dataIndex: 'fullName', ellipsis: true },
     { title: 'Lavozim', dataIndex: 'position', ellipsis: true, render: (value: string | null) => value ?? '—' },
     { title: 'Telefon', dataIndex: 'phone', width: 150, render: (value: string | null) => value ?? '—' },
-    { title: 'Amallar', key: 'actions', width: 190, render: (_, row) => <Space>
+    { title: 'Amallar', key: 'actions', width: 190, render: (_, row) => isPending(row) ? <span className="text-slate-400">Saqlanmoqda…</span> : <Space>
       <Button size="small" onClick={() => openPersonEditor({ kind: 'employee', employee: row })}>Tahrirlash</Button>
-      <Popconfirm title="Xodimni o‘chirasizmi?" onConfirm={() => run(() => api(`/districts/${row.districtId}/employees/${row.id}`, { method: 'DELETE' }))}>
+      <Popconfirm title="Xodimni o‘chirasizmi?" onConfirm={() => removeEmployee(row)}>
         <Button size="small" danger>O‘chirish</Button>
       </Popconfirm>
     </Space> },
@@ -161,14 +183,14 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     { title: 'Telefon', dataIndex: 'phone', width: 150, render: (value: string | null) => value ?? '—' },
     { title: 'Amallar', key: 'actions', width: 190, render: (_, head) => <Space>
       <Button size="small" onClick={() => openPersonEditor({ kind: 'head', head })}>Tahrirlash</Button>
-      <Popconfirm title="Tuman rahbarini o‘chirasizmi?" onConfirm={() => run(() => api(`/districts/${staffDistrictId}/heads/${head.id}`, { method: 'DELETE' }))}>
+      <Popconfirm title="Tuman rahbarini o‘chirasizmi?" onConfirm={() => change.mutate({ path: `/districts/${staffDistrictId}/heads/${head.id}`, method: 'DELETE' })}>
         <Button size="small" danger>O‘chirish</Button>
       </Popconfirm>
     </Space> },
   ]
 
   return <div><Space direction="vertical" size="middle" className="w-full">
-    {error && <Alert type="error" showIcon message={error} />}
+    {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
       {!isHead && <>
         <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
@@ -176,7 +198,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
       </>}
       <DatePicker allowClear={false} value={filters.date} onChange={(value: Dayjs | null) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={loading}>
+    <Card loading={query.isPending}>
       <div className="mb-4 flex flex-wrap justify-between gap-3">
         <Input.Search allowClear placeholder="Tuman, xodim yoki lavozim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} />
         <Space>

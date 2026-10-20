@@ -12,6 +12,7 @@
   "dependencies": {
     "@ant-design/cssinjs": "^2.1.2",
     "@ant-design/icons": "^6.3.4",
+    "@tanstack/react-query": "5.104.1",
     "antd": "^6.6.6",
     "exceljs": "4.4.0",
     "html2canvas": "1.4.1",

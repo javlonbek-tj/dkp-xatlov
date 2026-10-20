@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { apiFetch } from './api'
 import { Alert, Button, Card, Input, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { employeeText, exportExcel } from './excel-export'
@@ -24,34 +26,18 @@ type Row = {
 type Status = 'complete' | 'missingRepublic' | 'missingRegional'
 
 function AssignmentsPage({ token }: { token: string; user: User }) {
-  const [regions, setRegions] = useState<Region[]>([])
-  const [districts, setDistricts] = useState<District[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [regionId, setRegionId] = useState<string>()
   const [districtId, setDistrictId] = useState<string>()
   const [status, setStatus] = useState<Status>()
-
-  const load = useCallback(async () => {
-    try {
-      const response = await fetch('/api/assignments', { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Ma’lumotlarni yuklab bo‘lmadi')
-      setRegions(result.regions)
-      setDistricts(result.districts)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Ma’lumotlarni yuklab bo‘lmadi')
-    } finally {
-      setLoading(false)
-    }
-  }, [token])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0)
-    return () => window.clearTimeout(timer)
-  }, [load])
+  const assignmentsQuery = useQuery({
+    queryKey: ['assignments', token],
+    queryFn: () => apiFetch<{ regions: Region[]; districts: District[] }>(token, '/api/assignments'),
+  })
+  const regions = useMemo(() => assignmentsQuery.data?.regions ?? [], [assignmentsQuery.data])
+  const districts = useMemo(() => assignmentsQuery.data?.districts ?? [], [assignmentsQuery.data])
+  const error = assignmentsQuery.error?.message ?? null
+  const loading = assignmentsQuery.isPending
 
   // One row per district with its Republic and regional representatives.
   const rows = useMemo(() => {

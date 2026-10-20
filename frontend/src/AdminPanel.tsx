@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from './api'
 import {
   Alert,
   Button,
@@ -52,28 +54,11 @@ const roleLabels: Record<Role, string> = {
   DISTRICT_HEAD: 'Tuman rahbari',
 }
 
-async function api<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/admin${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      Authorization: `Bearer ${token}`,
-      ...init?.headers,
-    },
-  })
-  if (response.status === 204) return undefined as T
-  const result = await response.json()
-  if (!response.ok) throw new Error(result.error?.message ?? 'So‘rov bajarilmadi')
-  return result as T
-}
+const api = <T,>(token: string, path: string, init?: RequestInit) => apiFetch<T>(token, `/api/admin${path}`, init)
 
 function AdminPanel({ token, user }: { token: string; user: Employee }) {
   const isAdmin = user.role === 'ADMIN'
-  const [users, setUsers] = useState<UserRecord[]>([])
-  const [regions, setRegions] = useState<Region[]>([])
-  const [districts, setDistricts] = useState<District[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [userEditor, setUserEditor] = useState<UserRecord | null | undefined>(undefined)
   const [districtEditor, setDistrictEditor] = useState<District | null | undefined>(undefined)
   const [selectedRegionId, setAssignmentRegionId] = useState<string>()
@@ -86,39 +71,26 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
   const [userForm] = Form.useForm()
   const [districtForm] = Form.useForm()
   const districtRegionId = Form.useWatch('regionId', districtForm)
+  const queryClient = useQueryClient()
+  const usersQuery = useQuery({ queryKey: ['admin', token, 'users'], queryFn: () => api<{ users: UserRecord[] }>(token, '/users') })
+  const regionsQuery = useQuery({ queryKey: ['admin', token, 'regions'], queryFn: () => api<{ regions: Region[] }>(token, '/regions') })
+  const districtsQuery = useQuery({ queryKey: ['admin', token, 'districts'], queryFn: () => api<{ districts: District[] }>(token, '/districts') })
+  const users = useMemo(() => usersQuery.data?.users ?? [], [usersQuery.data])
+  const regions = useMemo(() => regionsQuery.data?.regions ?? [], [regionsQuery.data])
+  const districts = useMemo(() => districtsQuery.data?.districts ?? [], [districtsQuery.data])
+  const loading = usersQuery.isPending || regionsQuery.isPending || districtsQuery.isPending
+  const shownError = error ?? usersQuery.error?.message ?? regionsQuery.error?.message ?? districtsQuery.error?.message ?? null
   // A group leader with a single region gets it preselected.
   const assignmentRegionId = selectedRegionId ?? (regions.length === 1 ? regions[0].id : undefined)
   const assignmentRegion = regions.find((region) => region.id === assignmentRegionId)
 
-  const loadData = useCallback(async () => {
-    try {
-      const [userData, regionData, districtData] = await Promise.all([
-        api<{ users: UserRecord[] }>(token, '/users'),
-        api<{ regions: Region[] }>(token, '/regions'),
-        api<{ districts: District[] }>(token, '/districts'),
-      ])
-      setUsers(userData.users)
-      setRegions(regionData.regions)
-      setDistricts(districtData.districts)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Ma’lumotlarni yuklab bo‘lmadi')
-    } finally {
-      setLoading(false)
-    }
-  }, [token])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadData(), 0)
-    return () => window.clearTimeout(timer)
-  }, [loadData])
-
+  // The server checks these changes (unique usernames, assignments in use), so they are shown once it accepts them;
+  // the lists and every monitoring page that shows assignments are then refreshed in the background.
   async function run(action: () => Promise<unknown>) {
     try {
       setError(null)
-      setLoading(true)
       await action()
-      await loadData()
+      void queryClient.invalidateQueries()
       return true
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Amalni bajarib bo‘lmadi')
@@ -246,13 +218,10 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
       ...districtIds.filter((id) => !current.includes(id)).map((id) => ({ id, value: assignment.id })),
       ...current.filter((id) => !districtIds.includes(id)).map((id) => ({ id, value: null })),
     ]
-    const success = await run(async () => {
-      for (const change of changes) {
-        await api(token, `/districts/${change.id}`, {
-          method: 'PATCH', body: JSON.stringify({ [`${field}Id`]: change.value }),
-        })
-      }
-    })
+    // Each district is updated on its own, so the requests run in parallel.
+    const success = await run(() => Promise.all(changes.map((change) => api(token, `/districts/${change.id}`, {
+      method: 'PATCH', body: JSON.stringify({ [`${field}Id`]: change.value }),
+    }))))
     if (success) {
       setDistrictDrafts((drafts) => {
         const next = { ...drafts }
@@ -323,7 +292,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
   return (
     <div>
       <Space direction="vertical" size="middle" className="w-full">
-        {error && <Alert type="error" showIcon message={error} />}
+        {shownError && <Alert type="error" showIcon message={shownError} />}
 
         <Card loading={loading}>
           <Tabs items={[

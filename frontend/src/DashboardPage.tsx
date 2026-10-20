@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { apiFetch } from './api'
 import { Alert, Card, DatePicker, Empty, Progress, Select, Space, Statistic, Typography } from 'antd'
 import { AlertOutlined, BarChartOutlined, CheckCircleOutlined, FileSearchOutlined, HomeOutlined, SwapOutlined } from '@ant-design/icons'
 
@@ -20,30 +22,22 @@ const monthNames = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 
 const stageLabels: Record<string, string> = { '1-3': '1–3 kun', '4-7': '4–7 kun', '8-14': '8–14 kun', '15-30': '15–30 kun', '31-90': '31–90 kun', '90+': '90+ kun' }
 
 function DashboardPage({ token }: { token: string; user: User }) {
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, from: undefined as string | undefined, to: undefined as string | undefined })
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
+  const query = useQuery({
+    queryKey: ['dashboard', token, filters],
+    queryFn: () => {
       const params = new URLSearchParams()
       if (filters.regionId) params.set('regionId', filters.regionId)
       if (filters.districtId) params.set('districtId', filters.districtId)
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
-      const response = await fetch(`/api/dashboard?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Dashboard ma’lumotlarini yuklab bo‘lmadi')
-      setData(result as DashboardData)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Dashboard ma’lumotlarini yuklab bo‘lmadi')
-    } finally { setLoading(false) }
-  }, [filters, token])
-
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load])
+      return apiFetch<DashboardData>(token, `/api/dashboard?${params}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? null
+  const error = query.error?.message ?? null
+  const loading = query.isPending
   const filterDistricts = useMemo(() => (data?.districts ?? []).filter((district) => !filters.regionId || district.regionId === filters.regionId), [data?.districts, filters.regionId])
 
   const percent = (part: number, total: number) => (total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0)

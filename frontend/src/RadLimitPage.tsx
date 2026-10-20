@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
+import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -18,37 +20,49 @@ type RadLimit = {
 type PageData = { districts: District[]; records: RadLimit[]; writableDistrictIds: string[] | null }
 // Values are month-to-date as of the record date.
 type Values = { recordDate: Dayjs; monthlyLimit: number; rejectedApplications: number }
+type SaveInput = { districtId: string; record?: RadLimit; payload: Pick<RadLimit, 'recordDate' | 'monthlyLimit' | 'rejectedApplications'> }
+const emptyData: PageData = { districts: [], records: [], writableDistrictIds: [] }
 
 const formatDate = (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY')
 
 function RadLimitPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: RadLimit } | null>(null)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
+  const queryKey = ['rad-limits', token, filters.date.format('YYYY-MM-DD'), filters.regionId, filters.districtId] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ date: queryKey[2] })
+      if (filters.regionId) params.set('regionId', filters.regionId)
+      if (filters.districtId) params.set('districtId', filters.districtId)
+      return apiFetch<PageData>(token, `/api/rad-limits?${params}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? emptyData
+  const shownError = error ?? query.error?.message ?? null
   const canWrite = user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
   const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
-  const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ date: filters.date.format('YYYY-MM-DD') })
-      if (filters.regionId) params.set('regionId', filters.regionId)
-      if (filters.districtId) params.set('districtId', filters.districtId)
-      const response = await fetch(`/api/rad-limits?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'RAD ma’lumotlarini yuklab bo‘lmadi')
-      setData(result as PageData)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'RAD ma’lumotlarini yuklab bo‘lmadi')
-    } finally { setLoading(false) }
-  }, [filters, token])
+  const saveMutation = useOptimisticMutation<PageData, SaveInput>({
+    queryKey, invalidate: ['rad-limits'],
+    mutationFn: ({ districtId, record, payload }) => apiFetch(token,
+      record ? `/api/rad-limits/districts/${districtId}/records/${record.id}` : `/api/rad-limits/districts/${districtId}`,
+      { method: record ? 'PATCH' : 'POST', body: JSON.stringify(payload) }),
+    update: (old, { districtId, record, payload }) => {
+      const district = old.districts.find((item) => item.id === districtId)
+      if (!district) return old
+      const saved = { ...payload, remainingLimit: payload.monthlyLimit - payload.rejectedApplications, id: record?.id ?? optimisticId(), districtId, district }
+      return { ...old, records: applySaved(old.records, queryKey[2], saved, record?.id) }
+    },
+    onError: setError,
+    onSuccess: () => setError(null),
+  })
 
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load])
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
   // The three districts that have used the largest share of their limit (including those over it) are highlighted.
@@ -137,29 +151,23 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
       const percent = Math.round(row.rejectedApplications / row.monthlyLimit * 100)
       return <Tag color={worstIds.has(row.id) ? 'red' : 'blue'} className="!m-0 min-w-12 text-center !font-semibold">{percent}%</Tag>
     } },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RadLimit) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RadLimit>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RadLimit) => canEdit(row.districtId) && <Button size="small" disabled={isOptimistic(row.id)} onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RadLimit>[number]] : []),
   ]
 
-  async function save(values: Values) {
+  function save(values: Values) {
     if (!editor) return
-    try {
-      const path = editor.record ? `/api/rad-limits/districts/${editor.districtId}/records/${editor.record.id}` : `/api/rad-limits/districts/${editor.districtId}`
-      const response = await fetch(path, { method: editor.record ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...values, recordDate: values.recordDate.format('YYYY-MM-DD') }) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Saqlash amalga oshmadi')
-      setEditor(null)
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlash amalga oshmadi') }
+    saveMutation.mutate({ districtId: editor.districtId, record: editor.record, payload: { monthlyLimit: values.monthlyLimit, rejectedApplications: values.rejectedApplications, recordDate: values.recordDate.format('YYYY-MM-DD') } })
+    setEditor(null)
   }
 
   return <div><Space direction="vertical" size="middle" className="w-full">
-    {error && <Alert type="error" showIcon message={error} />}
+    {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1260 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1260 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'RAD limitini tahrirlash' : 'RAD limitini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>

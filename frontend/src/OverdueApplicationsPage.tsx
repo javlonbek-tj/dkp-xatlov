@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
+import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -16,6 +18,8 @@ type StageField = 'stage1to3' | 'stage4to7' | 'stage8to14' | 'stage15to30' | 'st
 type OverdueRecord = { id: string; districtId: string; recordDate: string; district: District } & Record<StageField, number>
 type PageData = { districts: District[]; records: OverdueRecord[]; writableDistrictIds: string[] | null }
 type Values = { recordDate: Dayjs } & Record<StageField, number>
+type SaveInput = { districtId: string; record?: OverdueRecord; payload: { recordDate: string } & Record<StageField, number> }
+const emptyData: PageData = { districts: [], records: [], writableDistrictIds: [] }
 
 const stages: { field: StageField; label: string }[] = [
   { field: 'stage1to3', label: '1–3 kun' }, { field: 'stage4to7', label: '4–7 kun' }, { field: 'stage8to14', label: '8–14 kun' },
@@ -29,34 +33,45 @@ function employeeCell(user?: Employee) {
 }
 
 function OverdueApplicationsPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: OverdueRecord } | null>(null)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
+  const queryKey = ['overdue-applications', token, filters.date.format('YYYY-MM-DD'), filters.regionId, filters.districtId] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ date: queryKey[2] })
+      if (filters.regionId) params.set('regionId', filters.regionId)
+      if (filters.districtId) params.set('districtId', filters.districtId)
+      return apiFetch<PageData>(token, `/api/overdue-applications?${params}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? emptyData
+  const shownError = error ?? query.error?.message ?? null
   const canWrite = user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
   const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
-  const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (filters.regionId) params.set('regionId', filters.regionId)
-      if (filters.districtId) params.set('districtId', filters.districtId)
-      params.set('date', filters.date.format('YYYY-MM-DD'))
-      const response = await fetch(`/api/overdue-applications?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Ma’lumotlarni yuklab bo‘lmadi')
-      setData(result as PageData)
-      setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Ma’lumotlarni yuklab bo‘lmadi')
-    } finally { setLoading(false) }
-  }, [filters, token])
+  const saveMutation = useOptimisticMutation<PageData, SaveInput>({
+    queryKey, invalidate: ['overdue-applications'],
+    mutationFn: ({ districtId, record, payload }) => apiFetch(token,
+      record ? `/api/overdue-applications/districts/${districtId}/records/${record.id}` : `/api/overdue-applications/districts/${districtId}`,
+      { method: record ? 'PATCH' : 'POST', body: JSON.stringify(payload) },
+    ).catch((cause: Error & { code?: string }) => {
+      throw cause.code === 'DUPLICATE_SNAPSHOT' ? new Error('Bu tuman uchun shu sanada yozuv mavjud — uni tahrirlang') : cause
+    }),
+    update: (old, { districtId, record, payload }) => {
+      const district = old.districts.find((item) => item.id === districtId)
+      if (!district) return old
+      return { ...old, records: applySaved(old.records, queryKey[2], { ...payload, id: record?.id ?? optimisticId(), districtId, district }, record?.id) }
+    },
+    onError: setError,
+    onSuccess: () => setError(null),
+  })
 
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load])
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
   const visibleRecords = data.records.filter((row) => [row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
@@ -85,32 +100,26 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
     })) },
     { title: 'Jami', key: 'total', width: 90, align: 'center', render: (_, row) => <Tag color={worstIds.has(row.id) ? 'red' : total(row) ? 'orange' : 'default'} className="!m-0 min-w-10 text-center !font-semibold">{total(row)}</Tag> },
     { title: 'Sana', dataIndex: 'recordDate', width: 110, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: OverdueRecord) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<OverdueRecord>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: OverdueRecord) => canEdit(row.districtId) && <Button size="small" disabled={isOptimistic(row.id)} onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<OverdueRecord>[number]] : []),
   ]
 
-  async function save(values: Values) {
+  function save(values: Values) {
     if (!editor) return
-    const payload = { recordDate: values.recordDate.format('YYYY-MM-DD'), ...Object.fromEntries(stages.map((stage) => [stage.field, values[stage.field] ?? 0])) }
-    try {
-      const path = editor.record ? `/api/overdue-applications/districts/${editor.districtId}/records/${editor.record.id}` : `/api/overdue-applications/districts/${editor.districtId}`
-      const response = await fetch(path, { method: editor.record ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.code === 'DUPLICATE_SNAPSHOT' ? 'Bu tuman uchun shu sanada yozuv mavjud — uni tahrirlang' : result.error?.message ?? 'Saqlash amalga oshmadi')
-      setEditor(null)
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlash amalga oshmadi') }
+    const payload = { recordDate: values.recordDate.format('YYYY-MM-DD'), ...Object.fromEntries(stages.map((stage) => [stage.field, values[stage.field] ?? 0])) } as SaveInput['payload']
+    saveMutation.mutate({ districtId: editor.districtId, record: editor.record, payload })
+    setEditor(null)
   }
 
   const editorDistrict = data.districts.find((item) => item.id === editor?.districtId)
 
   return <div><Space direction="vertical" size="middle" className="w-full">
-    {error && <Alert type="error" showIcon message={error} />}
+    {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear showSearch optionFilterProp="label" placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={loading}>
+    <Card loading={query.isPending}>
       <div className="mb-4 flex flex-wrap justify-between gap-3">
         <Input.Search allowClear placeholder="Tuman yoki vakil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} />
         <Space>

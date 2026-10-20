@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
+import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -15,39 +17,60 @@ type District = {
 type MkdRecord = { id: string; districtId: string; year: number; recordDate: string; inProgressCount: number; district: District }
 type PageData = { districts: District[]; records: MkdRecord[]; writableDistrictIds: string[] | null }
 type Values = { year: number; recordDate: Dayjs; inProgressCount: number }
+type SaveInput = { districtId: string; record?: MkdRecord; payload: Pick<MkdRecord, 'year' | 'recordDate' | 'inProgressCount'> }
+const emptyData: PageData = { districts: [], records: [], writableDistrictIds: [] }
 
 const formatDate = (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY')
 // Years from 2020 up to the current year, newest first.
 const yearOptions = Array.from({ length: dayjs().year() - 2019 }, (_, index) => dayjs().year() - index).map((year) => ({ value: year, label: `${year}-yil` }))
 
 function MkdPage({ token, user }: { token: string; user: User }) {
-  const [data, setData] = useState<PageData>({ districts: [], records: [], writableDistrictIds: [] })
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ districtId: string; record?: MkdRecord } | null>(null)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, year: undefined as number | null | undefined, date: dayjs().subtract(1, 'day') })
   const [form] = Form.useForm()
+  const queryKey = ['mkd', token, filters.date.format('YYYY-MM-DD'), filters.regionId, filters.districtId] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ date: queryKey[2] })
+      if (filters.regionId) params.set('regionId', filters.regionId)
+      if (filters.districtId) params.set('districtId', filters.districtId)
+      return apiFetch<PageData>(token, `/api/mkd?${params}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const data = query.data ?? emptyData
+  const shownError = error ?? query.error?.message ?? null
   const canWrite = user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE'
   // Republic employees see their whole region but edit only the districts they are responsible for.
   const canEdit = (districtId: string) => canWrite && (data.writableDistrictIds === null || data.writableDistrictIds.includes(districtId))
 
-  const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ date: filters.date.format('YYYY-MM-DD') })
-      if (filters.regionId) params.set('regionId', filters.regionId)
-      if (filters.districtId) params.set('districtId', filters.districtId)
-      const response = await fetch(`/api/mkd?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'MKD ma’lumotlarini yuklab bo‘lmadi')
-      setData(result as PageData)
+  const saveMutation = useOptimisticMutation<PageData, SaveInput>({
+    queryKey, invalidate: ['mkd'],
+    mutationFn: ({ districtId, record, payload }) => apiFetch(token,
+      record ? `/api/mkd/districts/${districtId}/records/${record.id}` : `/api/mkd/districts/${districtId}`,
+      { method: record ? 'PATCH' : 'POST', body: JSON.stringify(payload) }),
+    update: (old, { districtId, record, payload }) => {
+      const district = old.districts.find((item) => item.id === districtId)
+      if (!district) return old
+      return { ...old, records: applySaved(old.records, queryKey[2], { ...payload, id: record?.id ?? optimisticId(), districtId, district }, record?.id) }
+    },
+    onError: setError,
+    onSuccess: () => setError(null),
+  })
+  // Districts that get a 0 are known only to the server, so this change is shown after it answers.
+  const fillZeroMutation = useOptimisticMutation<PageData, { year: number }, { created: number }>({
+    queryKey, invalidate: ['mkd'],
+    mutationFn: ({ year }) => apiFetch(token, '/api/mkd/fill-zero', { method: 'POST', body: JSON.stringify({ year, recordDate: queryKey[2], regionId: filters.regionId, districtId: filters.districtId }) }),
+    onError: setError,
+    onSuccess: (result) => {
       setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'MKD ma’lumotlarini yuklab bo‘lmadi')
-    } finally { setLoading(false) }
-  }, [filters.regionId, filters.districtId, filters.date, token])
+      void message.success(result.created ? `${result.created} ta tumanga 0 kiritildi` : 'Barcha tumanlarda yozuv bor')
+    },
+  })
 
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load])
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
   // All years of the date are loaded; until a year is picked, 2024 is shown if it has MKD in progress, otherwise 2023.
@@ -115,42 +138,29 @@ function MkdPage({ token, user }: { token: string; user: User }) {
     { title: 'Sana', dataIndex: 'recordDate', width: 130, align: 'center', render: (value: string) => formatDate(value) },
     { title: 'Yil', dataIndex: 'year', width: 110, align: 'center', render: (value: number) => <Tag color="blue" className="!m-0 !font-semibold">{value}-yil</Tag> },
     { title: 'Jarayonda', dataIndex: 'inProgressCount', width: 120, align: 'center', render: (value: number, row) => <span className={worstDistricts.has(row.districtId) ? 'font-semibold text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: MkdRecord) => canEdit(row.districtId) && <Button size="small" onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<MkdRecord>[number]] : []),
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: MkdRecord) => canEdit(row.districtId) && <Button size="small" disabled={isOptimistic(row.id)} onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<MkdRecord>[number]] : []),
   ]
 
   // Adds 0 for the shown year and date to every editable district without a record, so only non-zero values need editing.
-  async function fillZero() {
-    if (!year) return
-    try {
-      const response = await fetch('/api/mkd/fill-zero', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ year, recordDate: filters.date.format('YYYY-MM-DD'), regionId: filters.regionId, districtId: filters.districtId }) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Saqlash amalga oshmadi')
-      void message.success(result.created ? `${result.created} ta tumanga 0 kiritildi` : 'Barcha tumanlarda yozuv bor')
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlash amalga oshmadi') }
+  function fillZero() {
+    if (year) fillZeroMutation.mutate({ year })
   }
 
-  async function save(values: Values) {
+  function save(values: Values) {
     if (!editor) return
-    try {
-      const path = editor.record ? `/api/mkd/districts/${editor.districtId}/records/${editor.record.id}` : `/api/mkd/districts/${editor.districtId}`
-      const response = await fetch(path, { method: editor.record ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...values, recordDate: values.recordDate.format('YYYY-MM-DD') }) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error?.message ?? 'Saqlash amalga oshmadi')
-      setEditor(null)
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlash amalga oshmadi') }
+    saveMutation.mutate({ districtId: editor.districtId, record: editor.record, payload: { year: values.year, inProgressCount: values.inProgressCount, recordDate: values.recordDate.format('YYYY-MM-DD') } })
+    setEditor(null)
   }
 
   return <div><Space direction="vertical" size="middle" className="w-full">
-    {error && <Alert type="error" showIcon message={error} />}
+    {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
       <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <Select allowClear placeholder="Yil" className="min-w-32" value={year ?? undefined} options={yearOptions} onChange={(value?: number) => setFilters((old) => ({ ...old, year: value ?? null }))} />
       <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={loading}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman, xodim yoki yil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button>{canWrite && <Popconfirm title={`${filters.date.format('DD.MM.YYYY')} uchun ${year}-yil bo‘yicha yozuvi yo‘q barcha tumanlarga 0 kiritilsinmi?`} okText="Ha" cancelText="Yo‘q" disabled={!year} onConfirm={fillZero}><Button disabled={!year} title={year ? undefined : 'Avval yilni tanlang'}>Barchasiga 0 kiritish</Button></Popconfirm>}<Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstDistricts.has(row.districtId) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1050 }} locale={{ emptyText: 'MKD yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman, xodim yoki yil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button>{canWrite && <Popconfirm title={`${filters.date.format('DD.MM.YYYY')} uchun ${year}-yil bo‘yicha yozuvi yo‘q barcha tumanlarga 0 kiritilsinmi?`} okText="Ha" cancelText="Yo‘q" disabled={!year} onConfirm={fillZero}><Button disabled={!year} loading={fillZeroMutation.isPending} title={year ? undefined : 'Avval yilni tanlang'}>Barchasiga 0 kiritish</Button></Popconfirm>}<Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstDistricts.has(row.districtId) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1050 }} locale={{ emptyText: 'MKD yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'MKD yozuvini tahrirlash' : 'MKD yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>, all: Values) => {
