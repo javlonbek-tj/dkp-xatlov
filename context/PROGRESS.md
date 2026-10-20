@@ -316,3 +316,11 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Still using plain `fetch`: login/logout/`me` in `App.tsx` and the one-off "previous record" prefill requests of Xatlov, MKD and RAD.
 - Files changed: `frontend/src/api.ts`, `frontend/src/XatlovPage.tsx`, `frontend/src/XatlovEmployeesTab.tsx`, `frontend/src/MkdPage.tsx`, `frontend/src/RadLimitPage.tsx`, `frontend/src/OverdueApplicationsPage.tsx`, `frontend/src/CallLogPage.tsx`, `frontend/src/ReportPage.tsx`, `frontend/src/DashboardPage.tsx`, `frontend/src/AssignmentsPage.tsx`, `frontend/src/AdminPanel.tsx`, `context/PROGRESS.md`.
 - Verification: Frontend `npx tsc -b`, `npm run lint` and `npm run build` passed. Not checked in a browser.
+
+### Overdue applications - Fill zero for all districts (completed)
+
+- User decision: add the MKD "Barchasiga 0 kiritish" action to the overdue applications page.
+- New `POST /api/overdue-applications/fill-zero` (`{ recordDate, regionId?, districtId? }`) creates an all-zero record for that date in every district the user may edit (within the optional filter) that has no record yet; existing records are never changed. Users who cannot edit any district get 403.
+- Muddati o‘tgan arizalar page: "Barchasiga 0 kiritish" button (with confirmation, for Administrators and Republic employees) uses the selected date and region/district filter and reports how many districts got a zero record.
+- Files changed: `backend/src/overdue-applications.ts`, `frontend/src/OverdueApplicationsPage.tsx`, `context/PROGRESS.md`.
+- Verification: Backend `npm run build`, frontend `npx tsc -b` and `npm run lint` passed. Not checked in a browser.

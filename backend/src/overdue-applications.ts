@@ -72,6 +72,39 @@ router.get('/', requireAuth, async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
+// Adds an all-zero record for the date to every editable district without one; existing records are never changed.
+router.post('/fill-zero', requireAuth, async (request, response, next) => {
+  try {
+    const user = request.auth!;
+    const input = (request.body ?? {}) as Record<string, unknown>;
+    const { regionId, districtId } = input;
+    if ([regionId, districtId].some((value) => value !== undefined && value !== null && typeof value !== 'string')) {
+      throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
+    }
+    const recordDate = parseDate(input.recordDate, 'Date');
+    const writable = await writableDistrictIds(user, true);
+    if (writable && !writable.length) throw new ApiError(403, 'FORBIDDEN', 'You cannot add overdue application records');
+    const districts = await prisma.district.findMany({
+      where: {
+        AND: [
+          readableDistrictScope(user),
+          regionId ? { regionId: regionId as string } : {},
+          districtId ? { id: districtId as string } : {},
+          writable ? { id: { in: writable } } : {},
+        ],
+        overdueSnapshots: { none: { recordDate } },
+      },
+      select: { id: true },
+    });
+    // Every stage count defaults to 0.
+    const result = await prisma.overdueSnapshot.createMany({
+      data: districts.map((district) => ({ districtId: district.id, recordDate })),
+      skipDuplicates: true,
+    });
+    response.status(201).json({ created: result.count });
+  } catch (error) { next(error); }
+});
+
 router.post('/districts/:districtId', requireAuth, requireDistrictAccess('write', true), async (request, response, next) => {
   try {
     const districtId = request.params.districtId;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
@@ -72,6 +72,17 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
     onSuccess: () => setError(null),
   })
 
+  // Districts that get zeros are known only to the server, so this change is shown after it answers.
+  const fillZeroMutation = useOptimisticMutation<PageData, void, { created: number }>({
+    queryKey, invalidate: ['overdue-applications'],
+    mutationFn: () => apiFetch(token, '/api/overdue-applications/fill-zero', { method: 'POST', body: JSON.stringify({ recordDate: queryKey[2], regionId: filters.regionId, districtId: filters.districtId }) }),
+    onError: setError,
+    onSuccess: (result) => {
+      setError(null)
+      void message.success(result.created ? `${result.created} ta tumanga 0 kiritildi` : 'Barcha tumanlarda yozuv bor')
+    },
+  })
+
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
   const visibleRecords = data.records.filter((row) => [row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
@@ -132,6 +143,9 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
             row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName,
             ...stages.map((stage) => row[stage.field]), total(row), dayjs(row.recordDate.slice(0, 10)).format('DD.MM.YYYY'),
           ]), { highlight: (row) => worstIds.has(visibleRecords[row].id) })}>Excel uchun eksport</Button>
+          {canWrite && <Popconfirm title={`${filters.date.format('DD.MM.YYYY')} uchun yozuvi yo‘q barcha tumanlarga 0 kiritilsinmi?`} okText="Ha" cancelText="Yo‘q" onConfirm={() => fillZeroMutation.mutate()}>
+            <Button loading={fillZeroMutation.isPending}>Barchasiga 0 kiritish</Button>
+          </Popconfirm>}
           <Select showSearch optionFilterProp="label" placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} value={null} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => id && openEditor(id)} />
         </Space>
       </div>
