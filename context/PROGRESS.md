@@ -348,3 +348,8 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Backend: new `reportDistrictScope` in `auth.ts` limits a district head to the district they head; used by `/api/report` and `/api/dashboard` only, so every other endpoint still returns nothing to them.
 - Dashboard region list is now derived from the readable districts (same result for existing roles).
 - Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov employees tab - Compact rows
+
+- The "Xodimlar kesimida" table uses the compact (`small`) size so 16 rows fit on screen with less scrolling.
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.

@@ -206,7 +206,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
           {data.canManage && <Select placeholder="Tuman xodimlari ro‘yxati" className="min-w-64" value={null} options={filterDistricts.filter((item) => !filters.districtId || item.id === filters.districtId).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id: string) => setStaffDistrictId(id)} />}
         </Space>
       </div>
-      <Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visible} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 16, showSizeChanger: true, pageSizeOptions: [16, 50, 100] }} scroll={{ x: 940 }} locale={{ emptyText: 'Tuman xodimlari topilmadi' }} />
+      <Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visible} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 16, showSizeChanger: true, pageSizeOptions: [16, 50, 100] }} scroll={{ x: 940 }} locale={{ emptyText: 'Tuman xodimlari topilmadi' }} />
     </Card>
   </Space>
 
