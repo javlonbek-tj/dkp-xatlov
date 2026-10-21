@@ -3,7 +3,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
-import { exportExcel } from './excel-export'
+import { exportExcel, type ExportHeader } from './excel-export'
+import { exportPdf } from './pdf-export'
 import { apiFetch, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
@@ -30,6 +31,7 @@ const lowestCount = 3
 
 function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
   const [error, setError] = useState<string | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ regionId: undefined as string | undefined, districtId: undefined as string | undefined, date: dayjs().subtract(1, 'day') })
   const [workEditor, setWorkEditor] = useState<Employee | null>(null)
@@ -148,15 +150,32 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     })
   }
 
-  function exportTable() {
-    void exportExcel(`xatlov-xodimlar-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
+  // Excel and PDF share the title, columns and highlights.
+  function exportTable(format: 'excel' | 'pdf') {
+    const place = data.districts.find((item) => item.id === filters.districtId)?.name ?? regions.find((item) => item.id === filters.regionId)?.name ?? 'Respublika'
+    const title = {
+      lines: [`“Dolzarb 90 kunlik” doirasida ${place} bo‘yicha xodimlar kesimida xatlov va migratsiya ishlari to‘g‘risida`, 'MA’LUMOT'],
+      note: `${filters.date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
+    }
+    const headers: ExportHeader[] = [
       'Hudud', 'Tuman', 'F.I.Sh.', 'Lavozim', 'Telefon', 'Izoh',
       { title: 'Kunlik', children: ['Xatlov soni', 'Migratsiya soni'] },
       { title: 'Haftalik (Du–Ju)', children: ['Xatlov soni', 'Migratsiya soni'] },
-    ], [
+    ]
+    const rows = [
       ['Jami', '', `${visible.length} ta xodim (${totals.entered} ta kiritilgan)`, '', '', '', totals.census, totals.migration, totals.weeklyCensus, totals.weeklyMigration],
       ...visible.map((row) => [row.district.region.name, row.district.name, row.fullName, row.position, row.phone, row.note, row.record?.censusCount, row.record?.migrationCount, row.weeklyCensusCount, row.weeklyMigrationCount]),
-    ], { totalRows: 1, highlight: (row, column) => column === 9 && row > 0 && lowest.has(visible[row - 1].id) })
+    ]
+    const options = { title, totalRows: 1, highlight: (row: number, column: number) => column === 9 && row > 0 && lowest.has(visible[row - 1].id) }
+    const filename = `xatlov-xodimlar-${filters.date.format('YYYY-MM-DD')}`
+    if (format === 'pdf') {
+      setError(null)
+      setPdfLoading(true)
+      exportPdf(filename, headers, rows, options)
+        .catch(() => setError('PDF faylni yaratib bo‘lmadi'))
+        .finally(() => setPdfLoading(false))
+    }
+    else void exportExcel(`${filename}.xlsx`, headers, rows, options)
   }
 
   const columns: ColumnsType<Employee> = [
@@ -230,7 +249,8 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
       <div className="mb-4 flex flex-wrap justify-between gap-3">
         <Input.Search allowClear placeholder="Tuman, xodim yoki lavozim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} />
         <Space>
-          <Button onClick={exportTable}>Excel uchun eksport</Button>
+          <Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button>
+          <Button onClick={() => exportTable('pdf')} disabled={!visible.length} loading={pdfLoading}>PDF yuklab olish</Button>
           {data.canManage && <Select placeholder="Tuman xodimlari ro‘yxati" className="min-w-64" value={null} options={filterDistricts.filter((item) => !filters.districtId || item.id === filters.districtId).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id: string) => setStaffDistrictId(id)} />}
         </Space>
       </div>

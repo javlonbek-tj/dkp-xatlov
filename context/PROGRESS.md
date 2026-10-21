@@ -367,3 +367,9 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Employee create/edit accepts `note`; the add/edit form has an "Izoh" field.
 - The note is shown in orange under the position in the employees table, as a column in the staff list window, in search and in the Excel export.
 - Verified with `prisma migrate deploy`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov page - PDF export with title
+
+- Both Xatlov tabs ("Tumanlar bo‘yicha" and "Xodimlar kesimida") have a "PDF yuklab olish" button next to the Excel export, using the report's `exportPdf` (A4 landscape, grouped headers, totals row, red highlights).
+- Excel and PDF now carry a report-style title: "“Dolzarb 90 kunlik” doirasida <district | region | Respublika> bo‘yicha (xodimlar kesimida) xatlov va migratsiya ishlari to‘g‘risida", "MA’LUMOT", and the date and time.
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
