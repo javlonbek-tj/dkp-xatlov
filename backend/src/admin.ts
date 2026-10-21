@@ -60,6 +60,14 @@ function optionalPhone(value: unknown): string | null {
   return value.trim();
 }
 
+// A viewer sees either one region (its ID) or the whole republic (null).
+async function viewerScope(value: unknown): Promise<{ allRegions: boolean; regionId: string | null }> {
+  if (value === null) return { allRegions: true, regionId: null };
+  if (typeof value !== 'string' || !value) throw new ApiError(400, 'INVALID_VIEWER_SCOPE', 'Choose the region the viewer can see, or the whole republic');
+  if (!(await prisma.region.findUnique({ where: { id: value }, select: { id: true } }))) throw new ApiError(404, 'REGION_NOT_FOUND', 'Region not found');
+  return { allRegions: false, regionId: value };
+}
+
 function mapDatabaseError(error: unknown, next: NextFunction): void {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2002') {
@@ -107,6 +115,7 @@ router.get('/users', async (request, response, next) => {
         fullName: true,
         phone: true,
         role: true,
+        allRegions: true,
         regionAssignments: {
           include: { region: { select: { id: true, name: true } } },
         },
@@ -129,8 +138,14 @@ router.post('/users', adminOnly, async (request, response, next) => {
       throw new ApiError(400, 'INVALID_ROLE', 'Choose a valid employee role');
     }
 
+    const scope = role === UserRole.VIEWER ? await viewerScope(request.body?.viewerRegionId) : null;
+
     const user = await prisma.user.create({
-      data: { username, fullName, phone: optionalPhone(request.body?.phone), passwordHash: await hashPassword(userPassword), role },
+      data: {
+        username, fullName, phone: optionalPhone(request.body?.phone), passwordHash: await hashPassword(userPassword), role,
+        allRegions: scope?.allRegions ?? false,
+        ...(scope?.regionId ? { regionAssignments: { create: { regionId: scope.regionId } } } : {}),
+      },
       select: { id: true, username: true, fullName: true, phone: true, role: true },
     });
     response.status(201).json({ user });
@@ -145,7 +160,7 @@ router.patch('/users/:userId', async (request, response, next) => {
     // Group leaders may edit only the name and phone of employees assigned to a region they lead.
     const regionIds = await managedRegionIds(request);
     if (regionIds) {
-      if (request.body?.password !== undefined || request.body?.role !== undefined) {
+      if (request.body?.password !== undefined || request.body?.role !== undefined || request.body?.viewerRegionId !== undefined) {
         throw new ApiError(403, 'FORBIDDEN', 'Group leaders can change only the full name and phone number');
       }
       const inLedRegion = await prisma.employeeRegionAssignment.count({ where: { userId, regionId: { in: regionIds } } });
@@ -157,7 +172,7 @@ router.patch('/users/:userId', async (request, response, next) => {
     });
     if (!existing) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found');
 
-    const data: { fullName?: string; phone?: string | null; passwordHash?: string; role?: UserRole } = {};
+    const data: { fullName?: string; phone?: string | null; passwordHash?: string; role?: UserRole; allRegions?: boolean } = {};
     if (request.body?.fullName !== undefined) data.fullName = text(request.body.fullName, 'Full name', 150);
     if (request.body?.phone !== undefined) data.phone = optionalPhone(request.body.phone);
     if (request.body?.password !== undefined) {
@@ -168,7 +183,8 @@ router.patch('/users/:userId', async (request, response, next) => {
       if (!Object.values(UserRole).includes(role)) {
         throw new ApiError(400, 'INVALID_ROLE', 'Choose a valid employee role');
       }
-      if (role !== existing.role && existing._count.regionAssignments > 0) {
+      // A viewer's single region is replaced below, so only other roles must remove their assignments first.
+      if (role !== existing.role && existing.role !== UserRole.VIEWER && existing._count.regionAssignments > 0) {
         throw new ApiError(409, 'ASSIGNMENTS_EXIST', 'Remove the user’s region assignments before changing their role');
       }
       if (role !== existing.role && (role === UserRole.DISTRICT_HEAD || existing.role === UserRole.DISTRICT_HEAD)) {
@@ -176,11 +192,26 @@ router.patch('/users/:userId', async (request, response, next) => {
       }
       data.role = role;
     }
+    const role = data.role ?? existing.role;
+    // A viewer's region (or the whole republic) is set with viewerRegionId; it is required when a user becomes a viewer.
+    let scope: { allRegions: boolean; regionId: string | null } | null = null;
+    if (request.body?.viewerRegionId !== undefined || (role === UserRole.VIEWER && existing.role !== UserRole.VIEWER)) {
+      if (role !== UserRole.VIEWER) throw new ApiError(400, 'INVALID_VIEWER_SCOPE', 'Only viewers have a viewing scope');
+      scope = await viewerScope(request.body?.viewerRegionId);
+      data.allRegions = scope.allRegions;
+    }
+    // A user who stops being a viewer loses the viewer's region.
+    const leavesViewer = existing.role === UserRole.VIEWER && role !== UserRole.VIEWER;
+    if (leavesViewer) data.allRegions = false;
     if (Object.keys(data).length === 0) {
       throw new ApiError(400, 'EMPTY_UPDATE', 'Provide at least one field to update');
     }
 
     const user = await prisma.$transaction(async (transaction) => {
+      if (scope || leavesViewer) {
+        await transaction.employeeRegionAssignment.deleteMany({ where: { userId } });
+        if (scope?.regionId) await transaction.employeeRegionAssignment.create({ data: { userId, regionId: scope.regionId } });
+      }
       const updated = await transaction.user.update({
         where: { id: userId },
         data,
@@ -263,9 +294,12 @@ router.post('/regions/:regionId/assignments', async (request, response, next) =>
     const regionId = request.params.regionId as string;
     await requireRegionAccess(request, regionId);
     const userId = text(request.body?.userId, 'User', 100);
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, allRegions: true, _count: { select: { regionAssignments: true } } } });
     if (!user || user.role === UserRole.ADMIN || user.role === UserRole.DISTRICT_HEAD) {
       throw new ApiError(400, 'INVALID_EMPLOYEE', 'Only employee accounts can be assigned to a region');
+    }
+    if (user.role === UserRole.VIEWER && (user.allRegions || user._count.regionAssignments > 0)) {
+      throw new ApiError(409, 'VIEWER_HAS_SCOPE', 'A viewer sees one region or the whole republic; change it in the user’s settings');
     }
     const assignment = await prisma.employeeRegionAssignment.create({ data: { userId, regionId } });
     response.status(201).json({ assignment });

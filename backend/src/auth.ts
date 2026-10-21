@@ -10,6 +10,7 @@ interface AuthenticatedUser {
   username: string;
   fullName: string;
   role: UserRole;
+  allRegions: boolean;
   sessionId: string;
 }
 
@@ -43,7 +44,7 @@ export const requireAuth: RequestHandler = async (request, _response, next) => {
     const session = await prisma.session.findUnique({
       where: { tokenHash: hashToken(match[1]) },
       include: {
-        user: { select: { id: true, username: true, fullName: true, role: true } },
+        user: { select: { id: true, username: true, fullName: true, role: true, allRegions: true } },
       },
     });
 
@@ -73,16 +74,16 @@ export function requireRole(...roles: UserRole[]): RequestHandler {
   };
 }
 
-// Republic employees and viewers see every district in the regions they are assigned to;
+// Republic employees and viewers see every district in the regions they are assigned to (viewers with allRegions see every region);
 // regional employees see only the districts they are assigned to as the regional representative.
-export function readableDistrictScope(user: { id: string; role: UserRole }): Prisma.DistrictWhereInput {
-  if (user.role === UserRole.ADMIN) return {};
+export function readableDistrictScope(user: { id: string; role: UserRole; allRegions?: boolean }): Prisma.DistrictWhereInput {
+  if (user.role === UserRole.ADMIN || (user.role === UserRole.VIEWER && user.allRegions)) return {};
   if (user.role === UserRole.REGIONAL_EMPLOYEE) return { regionalEmployeeAssignment: { is: { userId: user.id } } };
   return { region: { employeeAssignments: { some: { userId: user.id } } } };
 }
 
 // The report and dashboard also let a district head see their own district; other pages stay closed to them.
-export function reportDistrictScope(user: { id: string; role: UserRole }): Prisma.DistrictWhereInput {
+export function reportDistrictScope(user: { id: string; role: UserRole; allRegions?: boolean }): Prisma.DistrictWhereInput {
   if (user.role === UserRole.DISTRICT_HEAD) return { heads: { some: { id: user.id } } };
   return readableDistrictScope(user);
 }
@@ -145,7 +146,7 @@ export function requireDistrictAccess(action: 'report' | 'write', allowGroupLead
           (allowGroupLeader && district.region.groupLeaderAssignment?.userId === user.id));
       const isRegionalEmployeeInRegion =
         (user.role === UserRole.REGIONAL_EMPLOYEE && district.regionalEmployeeAssignment?.userId === user.id) ||
-        (user.role === UserRole.VIEWER && district.region.employeeAssignments.length > 0);
+        (user.role === UserRole.VIEWER && (user.allRegions || district.region.employeeAssignments.length > 0));
       const permitted =
         isAdministrator ||
         (action === 'write' && isAssignedRepublicEmployee) ||

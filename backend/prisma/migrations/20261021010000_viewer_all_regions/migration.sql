@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "allRegions" BOOLEAN NOT NULL DEFAULT false;

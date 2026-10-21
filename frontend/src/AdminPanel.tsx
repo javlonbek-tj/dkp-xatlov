@@ -40,7 +40,9 @@ type District = {
   republicEmployeeAssignment: RegionAssignment | null
   regionalEmployeeAssignment: RegionAssignment | null
 }
-type UserRecord = Employee & { regionAssignments: { id: string; region: { id: string; name: string } }[] }
+type UserRecord = Employee & { allRegions?: boolean; regionAssignments: { id: string; region: { id: string; name: string } }[] }
+// Viewer scope option for the whole republic; any other value is a region ID.
+const allRegionsScope = 'ALL'
 function employeeCell(user?: { fullName: string; phone?: string | null }) {
   if (!user) return '—'
   return <div className="truncate leading-tight" title={user.fullName}>{user.fullName}{user.phone && <div className="text-xs text-slate-500">{user.phone}</div>}</div>
@@ -66,11 +68,15 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
   const [newEmployeeForm] = Form.useForm()
   const [pendingAssignmentUserId, setPendingAssignmentUserId] = useState<string>()
   const [districtDrafts, setDistrictDrafts] = useState<Record<string, string[]>>({})
+  const [userSearch, setUserSearch] = useState('')
+  const [userRoleFilter, setUserRoleFilter] = useState<Role>()
+  const [userRegionFilter, setUserRegionFilter] = useState<string>()
   const [districtSearch, setDistrictSearch] = useState('')
   const [districtRegionFilter, setDistrictRegionFilter] = useState<string>()
   const [userForm] = Form.useForm()
   const [districtForm] = Form.useForm()
   const districtRegionId = Form.useWatch('regionId', districtForm)
+  const editedUserRole = Form.useWatch('role', userForm)
   const queryClient = useQueryClient()
   const usersQuery = useQuery({ queryKey: ['admin', token, 'users'], queryFn: () => api<{ users: UserRecord[] }>(token, '/users') })
   const regionsQuery = useQuery({ queryKey: ['admin', token, 'regions'], queryFn: () => api<{ regions: Region[] }>(token, '/regions') })
@@ -100,7 +106,10 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
 
   function openUserEditor(record?: UserRecord) {
     setUserEditor(record ?? null)
-    userForm.setFieldsValue(record ? { ...record, password: '' } : { role: 'REPUBLIC_EMPLOYEE' })
+    userForm.setFieldsValue(record ? {
+      ...record, password: '',
+      viewerScope: record.role !== 'VIEWER' ? undefined : record.allRegions ? allRegionsScope : record.regionAssignments[0]?.region.id,
+    } : { role: 'REPUBLIC_EMPLOYEE' })
   }
 
   function openDistrictEditor(record?: District) {
@@ -124,7 +133,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
     { title: 'Turi', dataIndex: 'role', render: (role: Role) => roleLabels[role] },
     {
       title: 'Hududlar',
-      render: (_, record) => record.regionAssignments.map((assignment) => assignment.region.name).join(', ') || '—',
+      render: (_, record) => record.allRegions ? 'Respublika' : record.regionAssignments.map((assignment) => assignment.region.name).join(', ') || '—',
     },
     {
       title: 'Amallar',
@@ -193,6 +202,12 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
   )
   const republicEmployees = (assignmentRegion?.employeeAssignments ?? [])
     .filter((item) => item.user.role === 'REPUBLIC_EMPLOYEE')
+  const visibleUsers = users.filter((item) =>
+    (!userRoleFilter || item.role === userRoleFilter)
+    && (!userRegionFilter || item.regionAssignments.some((assignment) => assignment.region.id === userRegionFilter))
+    && [item.fullName, item.username, item.phone]
+      .join(' ').toLocaleLowerCase().includes(userSearch.trim().toLocaleLowerCase()),
+  )
   const visibleDistricts = districts.filter((item) =>
     (!districtRegionFilter || item.regionId === districtRegionFilter)
     && [item.name, item.region.name, item.republicEmployeeAssignment?.user.fullName, item.regionalEmployeeAssignment?.user.fullName]
@@ -298,8 +313,15 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
           <Tabs items={[
             {
               key: 'users', label: 'Foydalanuvchilar', children: <>
-                <div className="mb-4 flex justify-end"><Button type="primary" onClick={() => openUserEditor()}>Xodim qo‘shish</Button></div>
-                <Table rowKey="id" columns={userColumns} dataSource={users} pagination={{ pageSize: 10 }} scroll={{ x: true }} />
+                <div className="mb-4 flex flex-wrap justify-between gap-3">
+                  <Space wrap>
+                    <Input.Search allowClear placeholder="F.I.Sh., login yoki telefon bo‘yicha qidirish" className="w-72" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} />
+                    <Select allowClear placeholder="Turi" className="min-w-44" value={userRoleFilter} options={Object.entries(roleLabels).map(([value, label]) => ({ value, label }))} onChange={setUserRoleFilter} />
+                    <Select allowClear showSearch optionFilterProp="label" placeholder="Hudud" className="min-w-52" value={userRegionFilter} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={setUserRegionFilter} />
+                  </Space>
+                  <Button type="primary" onClick={() => openUserEditor()}>Xodim qo‘shish</Button>
+                </div>
+                <Table rowKey="id" columns={userColumns} dataSource={visibleUsers} pagination={{ pageSize: 10 }} scroll={{ x: true }} locale={{ emptyText: 'Foydalanuvchilar topilmadi' }} />
               </>,
             },
             {
@@ -413,8 +435,11 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
       >
         <Form key={userEditor?.id ?? 'new-user'} form={userForm} layout="vertical" onFinish={async (values) => {
           // Group leaders may change only the name and phone number.
-          const payload = isAdmin ? { ...values } : { fullName: values.fullName, phone: values.phone }
+          const { viewerScope, ...fields } = values
+          const payload = isAdmin ? { ...fields } : { fullName: values.fullName, phone: values.phone }
           if (!payload.password) delete payload.password
+          // A viewer sees one region or the whole republic (sent as null).
+          if (isAdmin && values.role === 'VIEWER') payload.viewerRegionId = viewerScope === allRegionsScope ? null : viewerScope
           const success = await run(() => api(token, userEditor ? `/users/${userEditor.id}` : '/users', {
             method: userEditor ? 'PATCH' : 'POST', body: JSON.stringify(payload),
           }))
@@ -427,6 +452,12 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
             <Form.Item label="Turi" name="role" rules={[{ required: true }]}>
               <Select options={Object.entries(roleLabels).filter(([value]) => value !== 'DISTRICT_HEAD' || userEditor?.role === 'DISTRICT_HEAD').map(([value, label]) => ({ value, label }))} />
             </Form.Item>
+            {editedUserRole === 'VIEWER' && <Form.Item label="Ko‘rish doirasi" name="viewerScope" rules={[{ required: true, message: 'Viloyatni yoki Respublikani tanlang' }]} extra="Kuzatuvchi faqat shu viloyat yoki butun Respublika ma’lumotlarini ko‘radi">
+              <Select showSearch optionFilterProp="label" placeholder="Viloyat yoki Respublika" options={[
+                { value: allRegionsScope, label: 'Respublika (barcha viloyatlar)' },
+                ...regions.map((item) => ({ value: item.id, label: item.name })),
+              ]} />
+            </Form.Item>}
             <Form.Item label={userEditor ? 'Yangi parol (ixtiyoriy)' : 'Parol'} name="password" rules={userEditor ? [] : [{ required: true }]}>
               <Input.Password maxLength={200} autoComplete="new-password" />
             </Form.Item>

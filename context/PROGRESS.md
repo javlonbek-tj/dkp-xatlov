@@ -386,3 +386,18 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Applies to every page that uses the shared scope: dashboard, report, Xatlov (both tabs), MKD, RAD, overdue applications.
 - Checked on Railway data: e.g. `navoiy-qiziltepa` → Qiziltepa tumani only; `navoiy-nurota` → G‘ozg‘on shahar and Nurota tumani.
 - Verified with backend `npm run build`; not checked in a browser.
+
+## Admin panel - User list filters
+
+- The "Foydalanuvchilar" tab has a search (full name, login, phone), a role filter and a region filter (users assigned to that region), like the districts tab.
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Viewers - One region or the whole republic
+
+- Cause of "viewer sees nothing": the viewer account had no region assignment, and viewers only saw assigned regions.
+- `User.allRegions` (migration `20261021010000_viewer_all_regions`, applied on Railway): a viewer with it sees every region; otherwise exactly one region via a region assignment.
+- Admin `POST /users` and `PATCH /users/:id` take `viewerRegionId` (region ID, or null for the whole republic); it is required when creating a viewer or changing a user to viewer, and replaces the viewer's region. Leaving the viewer role clears it. Group leaders cannot change it.
+- Adding a second region to a viewer through region assignments is refused (`VIEWER_HAS_SCOPE`).
+- `readableDistrictScope` and `requireDistrictAccess('report')` honour `allRegions`.
+- Admin panel user form shows "Ko‘rish doirasi" (Respublika or one region) for viewers; the users table shows "Respublika" for such viewers.
+- Verified with `prisma migrate deploy`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

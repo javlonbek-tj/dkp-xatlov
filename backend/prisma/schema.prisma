@@ -34,6 +34,8 @@ model User {
   role         UserRole
   // Set only for district heads.
   districtId   String?
+  // Viewers only: sees every region instead of the single region they are assigned to.
+  allRegions   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
