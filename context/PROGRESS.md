@@ -401,3 +401,14 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - `readableDistrictScope` and `requireDistrictAccess('report')` honour `allRegions`.
 - Admin panel user form shows "Ko‘rish doirasi" (Respublika or one region) for viewers; the users table shows "Respublika" for such viewers.
 - Verified with `prisma migrate deploy`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov district tab - Compact table
+
+- The "Tumanlar bo‘yicha" table uses the compact (`small`) size, narrower columns (long titles on two lines) and a 1690 px scroll width instead of 2030 px.
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov page - Default region
+
+- On both Xatlov tabs a non-admin user who can see a single region (e.g. a Republic employee or viewer assigned to Navoiy) has that region selected in the "Hudud" filter by default; it cannot be cleared. Admins and users with several regions still start with all regions.
+- The default region is also used for the district list and the Excel/PDF title (no extra request: the data is already limited to that region).
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.

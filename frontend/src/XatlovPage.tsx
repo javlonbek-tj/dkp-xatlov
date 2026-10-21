@@ -97,7 +97,9 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   })
 
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
-  const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
+  // A user who sees a single region (e.g. a Republic employee or viewer assigned to Navoiy) has it selected by default.
+  const regionId = filters.regionId ?? (user.role !== 'ADMIN' && regions.length === 1 ? regions[0].id : undefined)
+  const filterDistricts = data.districts.filter((item) => !regionId || item.regionId === regionId)
   const visibleRecords = data.records.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName, row.recordDate, row.completedMfyNames]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   function openEditor(districtId: string, record?: RecordRow) {
@@ -170,7 +172,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
 
   // Same layout as the table: grouped headers and the totals row first; Excel and PDF share the title and highlights.
   function exportTable(format: 'excel' | 'pdf') {
-    const place = data.districts.find((item) => item.id === filters.districtId)?.name ?? regions.find((item) => item.id === filters.regionId)?.name ?? 'Respublika'
+    const place = data.districts.find((item) => item.id === filters.districtId)?.name ?? regions.find((item) => item.id === regionId)?.name ?? 'Respublika'
     const title = {
       lines: [`“Dolzarb 90 kunlik” doirasida ${place} bo‘yicha xatlov va migratsiya ishlari to‘g‘risida`, 'MA’LUMOT'],
       note: `${filters.date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
@@ -208,27 +210,27 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   }
 
   const columns: ColumnsType<RecordRow> = [
-    { title: 'Tuman', key: 'district', width: 190, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
-    { title: 'Respublika vakili', key: 'republic', width: 190, render: (_, row) => employeeCell(row.district.republicEmployeeAssignment?.user) },
-    { title: 'Viloyat vakili', key: 'regional', width: 190, render: (_, row) => employeeCell(row.district.regionalEmployeeAssignment?.user) },
+    { title: 'Tuman', key: 'district', width: 170, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
+    { title: 'Respublika vakili', key: 'republic', width: 170, render: (_, row) => employeeCell(row.district.republicEmployeeAssignment?.user) },
+    { title: 'Viloyat vakili', key: 'regional', width: 170, render: (_, row) => employeeCell(row.district.regionalEmployeeAssignment?.user) },
     { title: 'Xodimlar', children: [
-      { title: 'Jami', key: 'engineers', width: 80, align: 'center', render: (_, row) => row.district.engineerCount ?? '—' },
-      { title: 'Xatlovda', key: 'xatlovEmployees', width: 90, align: 'center', render: (_, row) => row.district.xatlovEmployeeCount ?? '—' },
+      { title: 'Jami', key: 'engineers', width: 60, align: 'center', render: (_, row) => row.district.engineerCount ?? '—' },
+      { title: 'Xatlovda', key: 'xatlovEmployees', width: 75, align: 'center', render: (_, row) => row.district.xatlovEmployeeCount ?? '—' },
     ] },
     { title: 'Natijalar', children: [
-      { title: 'Tugallangan MFY', dataIndex: 'completedMfyCount', width: 130, align: 'center' },
-      { title: 'Xatlov soni', dataIndex: 'censusCount', width: 100, align: 'center', render: (value: number) => <span className={value < 0 ? 'text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
-      { title: <span className="leading-tight">Yakunlangan<br />obyekt</span>, dataIndex: 'completedObjectCount', width: 130, align: 'center', render: (value: number | null) => value?.toLocaleString('ru-RU') ?? '—' },
-      { title: 'Migratsiya soni', dataIndex: 'migrationCount', width: 120, align: 'center', render: (value: number) => <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{value.toLocaleString('ru-RU')}</Tag> },
+      { title: <span className="leading-tight">Tugallangan<br />MFY</span>, dataIndex: 'completedMfyCount', width: 95, align: 'center' },
+      { title: 'Xatlov soni', dataIndex: 'censusCount', width: 80, align: 'center', render: (value: number) => <span className={value < 0 ? 'text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
+      { title: <span className="leading-tight">Yakunlangan<br />obyekt</span>, dataIndex: 'completedObjectCount', width: 95, align: 'center', render: (value: number | null) => value?.toLocaleString('ru-RU') ?? '—' },
+      { title: <span className="leading-tight">Migratsiya<br />soni</span>, dataIndex: 'migrationCount', width: 95, align: 'center', render: (value: number) => <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{value.toLocaleString('ru-RU')}</Tag> },
     ] },
     { title: 'Haftalik (Du–Ju)', children: [
-      { title: 'Xatlov soni', dataIndex: 'weeklyCensusCount', width: 100, align: 'center', render: (value: number) => <span className={value < 0 ? 'text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
-      { title: 'Migratsiya soni', dataIndex: 'weeklyMigrationCount', width: 120, align: 'center', render: (value: number) => <Tag color="purple" className="!m-0 min-w-10 text-center !font-semibold">{value.toLocaleString('ru-RU')}</Tag> },
-      { title: <span className="leading-tight">1 xodimga kunlik<br />migratsiya</span>, key: 'migrationPerEmployeeDay', width: 140, onCell: (row) => worstPerEmployee.has(row.id) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}, align: 'center', render: (_, row) => perEmployeeDay(row.weeklyMigrationCount, employeeDays(row))?.toLocaleString('ru-RU') ?? '—' },
+      { title: 'Xatlov soni', dataIndex: 'weeklyCensusCount', width: 80, align: 'center', render: (value: number) => <span className={value < 0 ? 'text-red-600' : ''}>{value.toLocaleString('ru-RU')}</span> },
+      { title: <span className="leading-tight">Migratsiya<br />soni</span>, dataIndex: 'weeklyMigrationCount', width: 95, align: 'center', render: (value: number) => <Tag color="purple" className="!m-0 min-w-10 text-center !font-semibold">{value.toLocaleString('ru-RU')}</Tag> },
+      { title: <span className="leading-tight">1 xodimga kunlik<br />migratsiya</span>, key: 'migrationPerEmployeeDay', width: 110, onCell: (row) => worstPerEmployee.has(row.id) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}, align: 'center', render: (_, row) => perEmployeeDay(row.weeklyMigrationCount, employeeDays(row))?.toLocaleString('ru-RU') ?? '—' },
     ] },
-    { title: 'Tugallangan MFY nomlari', key: 'completedMfyNames', width: 220, ellipsis: true, render: (_, row) => row.completedMfyNames.join(', ') || '—' },
-    { title: 'Sana', dataIndex: 'recordDate', width: 110, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
-    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 120, fixed: 'right', align: 'center', render: (_: unknown, row: RecordRow) => canEdit(row.districtId) && <Button size="small" disabled={isOptimistic(row.id)} onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RecordRow>[number]] : []),
+    { title: 'Tugallangan MFY nomlari', key: 'completedMfyNames', width: 200, ellipsis: true, render: (_, row) => row.completedMfyNames.join(', ') || '—' },
+    { title: 'Sana', dataIndex: 'recordDate', width: 95, align: 'center', render: (value: string) => dayjs(value.slice(0, 10)).format('DD.MM.YYYY') },
+    ...(canWrite ? [{ title: 'Amallar', key: 'actions', width: 100, fixed: 'right', align: 'center', render: (_: unknown, row: RecordRow) => canEdit(row.districtId) && <Button size="small" disabled={isOptimistic(row.id)} onClick={() => openEditor(row.districtId, row)}>Tahrirlash</Button> } as ColumnsType<RecordRow>[number]] : []),
   ]
 
   function save(values: Values) {
@@ -249,11 +251,11 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   const districtTab = <div><Space direction="vertical" size="middle" className="w-full">
     {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
-      <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
+      <Select allowClear={regions.length > 1} placeholder="Hudud" className="min-w-52" value={regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <DatePicker allowClear={false} value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2030 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1690 }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>

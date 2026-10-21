@@ -67,7 +67,9 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     ({ ...old, employees: old.employees.map((item) => item.id === id ? patch(item) : item) })
 
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
-  const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
+  // A user who sees a single region (e.g. a Republic employee or viewer assigned to Navoiy) has it selected by default.
+  const regionId = filters.regionId ?? (user.role !== 'ADMIN' && regions.length === 1 ? regions[0].id : undefined)
+  const filterDistricts = data.districts.filter((item) => !regionId || item.regionId === regionId)
   // The employees with the lowest weekly migration come first.
   const visible = data.employees
     .filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.fullName, row.position, row.phone, row.note]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
@@ -152,7 +154,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
 
   // Excel and PDF share the title, columns and highlights.
   function exportTable(format: 'excel' | 'pdf') {
-    const place = data.districts.find((item) => item.id === filters.districtId)?.name ?? regions.find((item) => item.id === filters.regionId)?.name ?? 'Respublika'
+    const place = data.districts.find((item) => item.id === filters.districtId)?.name ?? regions.find((item) => item.id === regionId)?.name ?? 'Respublika'
     const title = {
       lines: [`“Dolzarb 90 kunlik” doirasida ${place} bo‘yicha xodimlar kesimida xatlov va migratsiya ishlari to‘g‘risida`, 'MA’LUMOT'],
       note: `${filters.date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
@@ -240,7 +242,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     {shownError && <Alert type="error" showIcon message={shownError} />}
     <Card size="small"><Space wrap>
       {!isHead && <>
-        <Select allowClear placeholder="Hudud" className="min-w-52" value={filters.regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
+        <Select allowClear={regions.length > 1} placeholder="Hudud" className="min-w-52" value={regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
         <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       </>}
       <DatePicker allowClear={false} value={filters.date} onChange={(value: Dayjs | null) => value && setFilters((old) => ({ ...old, date: value }))} />
