@@ -66,7 +66,7 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
       { key: 'mkd', icon: <BuildOutlined />, label: pageLabels.mkd },
       { key: 'rad', icon: <BarChartOutlined />, label: pageLabels.rad },
       { key: 'overdue', icon: <AlertOutlined />, label: 'Muddati o‘tgan' },
-      ...(user.role !== 'VIEWER' ? [{ key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' }] : []),
+      ...(user.role !== 'VIEWER' && user.role !== 'REGIONAL_EMPLOYEE' ? [{ key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' }] : []),
     ] },
     ...(user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE' ? [{ type: 'group' as const, label: 'Boshqaruv', children: [
       ...(user.role === 'ADMIN' || user.isGroupLeader ? [{ key: 'admin', icon: <TeamOutlined />, label: 'Xodimlar va tayinlovlar' }] : []),

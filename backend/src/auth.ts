@@ -73,9 +73,11 @@ export function requireRole(...roles: UserRole[]): RequestHandler {
   };
 }
 
-// Republic and regional employees see every district in the regions they are assigned to.
+// Republic employees and viewers see every district in the regions they are assigned to;
+// regional employees see only the districts they are assigned to as the regional representative.
 export function readableDistrictScope(user: { id: string; role: UserRole }): Prisma.DistrictWhereInput {
   if (user.role === UserRole.ADMIN) return {};
+  if (user.role === UserRole.REGIONAL_EMPLOYEE) return { regionalEmployeeAssignment: { is: { userId: user.id } } };
   return { region: { employeeAssignments: { some: { userId: user.id } } } };
 }
 
@@ -118,6 +120,7 @@ export function requireDistrictAccess(action: 'report' | 'write', allowGroupLead
         where: { id: districtId },
         select: {
           republicEmployeeAssignment: { select: { userId: true } },
+          regionalEmployeeAssignment: { select: { userId: true } },
           region: {
             select: {
               groupLeaderAssignment: { select: { userId: true } },
@@ -141,7 +144,8 @@ export function requireDistrictAccess(action: 'report' | 'write', allowGroupLead
         (district.republicEmployeeAssignment?.userId === user.id ||
           (allowGroupLeader && district.region.groupLeaderAssignment?.userId === user.id));
       const isRegionalEmployeeInRegion =
-        (user.role === UserRole.REGIONAL_EMPLOYEE || user.role === UserRole.VIEWER) && district.region.employeeAssignments.length > 0;
+        (user.role === UserRole.REGIONAL_EMPLOYEE && district.regionalEmployeeAssignment?.userId === user.id) ||
+        (user.role === UserRole.VIEWER && district.region.employeeAssignments.length > 0);
       const permitted =
         isAdministrator ||
         (action === 'write' && isAssignedRepublicEmployee) ||

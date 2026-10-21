@@ -373,3 +373,16 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Both Xatlov tabs ("Tumanlar bo‘yicha" and "Xodimlar kesimida") have a "PDF yuklab olish" button next to the Excel export, using the report's `exportPdf` (A4 landscape, grouped headers, totals row, red highlights).
 - Excel and PDF now carry a report-style title: "“Dolzarb 90 kunlik” doirasida <district | region | Respublika> bo‘yicha (xodimlar kesimida) xatlov va migratsiya ishlari to‘g‘risida", "MA’LUMOT", and the date and time.
 - Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Call log - Hidden from regional employees
+
+- Regional employees no longer see "Qo‘ng‘iroqlar" in the menu, and `GET /api/call-log` returns 403 for them (as for viewers). Writing was already limited to Republic employees and admins.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Regional employees - Only their own districts
+
+- `readableDistrictScope` now limits a regional employee to the districts where they are the assigned regional representative (previously every district of their region). Viewers and Republic employees are unchanged.
+- `requireDistrictAccess('report')` follows the same rule.
+- Applies to every page that uses the shared scope: dashboard, report, Xatlov (both tabs), MKD, RAD, overdue applications.
+- Checked on Railway data: e.g. `navoiy-qiziltepa` → Qiziltepa tumani only; `navoiy-nurota` → G‘ozg‘on shahar and Nurota tumani.
+- Verified with backend `npm run build`; not checked in a browser.

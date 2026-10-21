@@ -51,8 +51,8 @@ function todayInTashkent(): Date {
 router.get('/', requireAuth, async (request, response, next) => {
   try {
     const user = request.auth!;
-    // Viewers do not see call logs.
-    if (user.role === UserRole.VIEWER) throw new ApiError(403, 'FORBIDDEN', 'You do not have permission to view call logs');
+    // Viewers and regional employees do not see call logs.
+    if (user.role === UserRole.VIEWER || user.role === UserRole.REGIONAL_EMPLOYEE) throw new ApiError(403, 'FORBIDDEN', 'You do not have permission to view call logs');
     const dateValue = request.query.date;
     const districtId = request.query.districtId;
     if ([dateValue, districtId].some((value) => value !== undefined && typeof value !== 'string')) throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');

@@ -97,7 +97,7 @@ function App() {
           : page === 'mkd' ? <MkdPage {...props} />
           : page === 'rad' ? <RadLimitPage {...props} />
           : page === 'overdue' ? <OverdueApplicationsPage {...props} />
-          : page === 'calls' && user.role !== 'VIEWER' ? <CallLogPage {...props} />
+          : page === 'calls' && user.role !== 'VIEWER' && user.role !== 'REGIONAL_EMPLOYEE' ? <CallLogPage {...props} />
           : <DashboardPage {...props} />}
       </AppLayout>
     )
