@@ -412,3 +412,30 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - On both Xatlov tabs a non-admin user who can see a single region (e.g. a Republic employee or viewer assigned to Navoiy) has that region selected in the "Hudud" filter by default; it cannot be cleared. Admins and users with several regions still start with all regions.
 - The default region is also used for the district list and the Excel/PDF title (no extra request: the data is already limited to that region).
 - Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov - Daily plan to 31.12.2027
+
+- `backend/src/xatlov-plan.ts`: deadline 31.12.2027 and the official holidays of Uzbekistan (Ramazon/Qurbon hayiti dates are estimates and must be corrected when announced). A holiday on a day off moves to the next working day. Working days are counted after the given date up to the deadline for a 5-day and a 6-day week, holidays excluded.
+- `GET /api/xatlov` returns `plan` counted after the selected date. The "Tumanlar bo‘yicha" table has a "Kunlik reja" group: remaining objects (`objectCount` − `completedObjectCount` of the day's record), daily plan for a 5-day and a 6-day week (rounded up), with totals; the 5-day cell is red when the day's migration is below it. An info line above the table shows the working days and the excluded holidays. Excel/PDF include the new columns and the red highlight.
+- `GET /api/dashboard` returns `plan` with total, completed and remaining objects of the selected districts (latest records), counted after the newest record date; the dashboard shows a "Xatlov rejasi" card.
+- Checked on Railway data from 26.10.2026: Navoiy viloyati 226 526 objects, 55 048 completed, 299 / 360 working days.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov - Finish-date forecast
+
+- The "Kunlik reja" group of the "Tumanlar bo‘yicha" table has a "Taxminiy tugash" column: the day the remaining objects are done if the district keeps this week's average daily migration (weekly migration ÷ days with a record since Monday), counted in a 5-day week with holidays skipped from the selected date. The totals row gives the forecast for the visible districts together (sum of their daily paces), i.e. the region when one region is shown.
+- Green when on or before 31.12.2027, red after it; "Muddatsiz" when there is no migration this week or the forecast is over 10 years. Excel/PDF include the column and the red highlight.
+- `plan.fiveDayDaysOff` (holiday days off of a 5-day week after the selected date) is returned by `GET /api/xatlov`. Holidays after 2027 are not known, so later forecasts skip weekends only.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov - Forecast on the last 5 working days
+
+- The "Taxminiy tugash" pace is now the average daily migration over the last 5 working days up to the selected date (5-day week, holidays excluded; `lastWorkDaysStart` in `xatlov-plan.ts`), divided by the days with a record in that window, instead of the current week.
+- `GET /api/xatlov` returns `paceMigrationCount` and `paceDays` per record; the optimistic save adjusts them like the weekly totals.
+- Checked on Railway data for 26.10.2026 (window 20.10–26.10): Navoiy viloyati 242 migrations a day, forecast 27.07.2029.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Xatlov - Shorter plan note
+
+- The info line above the "Tumanlar bo‘yicha" table shows only the working days left to 31.12.2027 for a 5-day and a 6-day week; the colour explanations and the holiday list were removed (holidays are still excluded from the count).
+- Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.

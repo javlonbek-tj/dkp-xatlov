@@ -3,6 +3,7 @@ import { Prisma, UserRole } from '@prisma/client';
 import { ApiError } from './api-error.js';
 import { reportDistrictScope, requireAuth } from './auth.js';
 import { prisma } from './db.js';
+import { xatlovPlan } from './xatlov-plan.js';
 
 const router = express.Router();
 const stageKeys = ['1-3', '4-7', '8-14', '15-30', '31-90', '90+'] as const;
@@ -50,7 +51,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const [accessibleDistricts, accessibleRegions] = await Promise.all([
       prisma.district.findMany({
         where: scope,
-        select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } },
+        select: { id: true, name: true, regionId: true, objectCount: true, region: { select: { id: true, name: true } } },
         orderBy: [{ region: { name: 'asc' } }, { name: 'asc' }],
       }),
       prisma.region.findMany({ where: regionScope, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -69,7 +70,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     const [xatlovRows, mkdRows, radRows, overdueRows] = await Promise.all([
       prisma.xatlovRecord.findMany({
         where: { districtId: { in: ids }, ...(dateFilter ? { recordDate: dateFilter } : {}) },
-        select: { districtId: true, recordDate: true, completedMfyCount: true, censusCount: true, migrationCount: true },
+        select: { districtId: true, recordDate: true, completedMfyCount: true, censusCount: true, completedObjectCount: true, migrationCount: true },
         orderBy: [{ recordDate: 'desc' }, { createdAt: 'desc' }],
       }),
       // Latest in-progress MKD snapshot per district and year.
@@ -98,6 +99,10 @@ router.get('/', requireAuth, async (request, response, next) => {
     // Latest overdue stage counts per district, summed.
     const overdueStages = Object.fromEntries(stageKeys.map((stage) => [stage, sum(overdueRows, (row) => row[stageFieldByKey[stage]])])) as Record<Stage, number>;
     const overdueTotal = sum(stageKeys, (stage) => overdueStages[stage]);
+    // Plan counted from the newest Xatlov record (yesterday when there is none).
+    const planFrom = xatlov.reduce((newest, row) => (row.recordDate > newest ? row.recordDate : newest), new Date(today.date.getTime() - 86_400_000));
+    const objectCount = sum(selectedDistricts, (district) => district.objectCount ?? 0);
+    const completedObjectCount = sum(xatlov, (row) => row.completedObjectCount ?? 0);
     const currentMonthLimit = sum(radRows, (row) => row.monthlyLimit);
     const rejectedApplications = sum(radRows, (row) => row.rejectedApplications);
     response.json({
@@ -111,6 +116,7 @@ router.get('/', requireAuth, async (request, response, next) => {
         censusCount: sum(xatlov, (row) => row.censusCount),
         migrationCount: sum(xatlov, (row) => row.migrationCount),
       },
+      plan: { ...xatlovPlan(planFrom), objectCount, completedObjectCount, remainingObjectCount: Math.max(objectCount - completedObjectCount, 0) },
       mkd: { inProgressCount: sum(mkdRows, (row) => row.inProgressCount) },
       rad: { month: today.month, year: today.year, monthlyLimit: currentMonthLimit, rejectedApplications, remainingLimit: currentMonthLimit - rejectedApplications },
       overdue: { total: overdueTotal, stages: stageKeys.map((stage) => ({ stage, count: overdueStages[stage] })) },

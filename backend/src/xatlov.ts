@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ApiError } from './api-error.js';
 import { readableDistrictScope, requireAuth, requireDistrictAccess, writableDistrictIds } from './auth.js';
 import { prisma } from './db.js';
+import { lastWorkDaysStart, xatlovPlan } from './xatlov-plan.js';
 
 const router = express.Router();
 const districtInclude = {
@@ -69,6 +70,8 @@ router.get('/', requireAuth, async (request, response, next) => {
     const friday = new Date(weekStart);
     friday.setUTCDate(weekStart.getUTCDate() + 4);
     const weekEnd = date < friday ? date : friday;
+    // The finish-date forecast uses the pace of the last 5 working days up to the selected date.
+    const paceStart = lastWorkDaysStart(date, 5);
     const scope = readableDistrictScope(user);
     const authorizedDistricts: Prisma.DistrictWhereInput = { ...scope };
     const locationFilter: Prisma.DistrictWhereInput = {
@@ -81,7 +84,7 @@ router.get('/', requireAuth, async (request, response, next) => {
       orderBy: [{ region: { name: 'asc' } }, { name: 'asc' }],
       include: districtInclude,
     });
-    const [records, weekly] = await Promise.all([
+    const [records, weekly, pace] = await Promise.all([
       prisma.xatlovRecord.findMany({ where: { district: locationFilter, recordDate: date }, include: recordInclude, orderBy: { district: { name: 'asc' } } }),
       prisma.xatlovRecord.groupBy({
         by: ['districtId'],
@@ -89,8 +92,15 @@ router.get('/', requireAuth, async (request, response, next) => {
         _sum: { censusCount: true, migrationCount: true },
         _count: { _all: true },
       }),
+      prisma.xatlovRecord.groupBy({
+        by: ['districtId'],
+        where: { district: locationFilter, recordDate: { gte: paceStart, lte: date } },
+        _sum: { migrationCount: true },
+        _count: { _all: true },
+      }),
     ]);
     const weeklyByDistrict = new Map(weekly.map((item) => [item.districtId, { ...item._sum, days: item._count._all }]));
+    const paceByDistrict = new Map(pace.map((item) => [item.districtId, { migrationCount: item._sum.migrationCount ?? 0, days: item._count._all }]));
     response.json({
       districts,
       records: records.map((record) => ({
@@ -99,8 +109,13 @@ router.get('/', requireAuth, async (request, response, next) => {
         weeklyMigrationCount: weeklyByDistrict.get(record.districtId)?.migrationCount ?? 0,
         // Days worked this week = days with a saved record from Monday on.
         weeklyDays: weeklyByDistrict.get(record.districtId)?.days ?? 0,
+        // Migration and days with a record in the last 5 working days.
+        paceMigrationCount: paceByDistrict.get(record.districtId)?.migrationCount ?? 0,
+        paceDays: paceByDistrict.get(record.districtId)?.days ?? 0,
       })),
       writableDistrictIds: await writableDistrictIds(user, true),
+      // Working days left after the selected date, for the daily plan of each district.
+      plan: xatlovPlan(date),
     });
   } catch (error) { next(error); }
 });

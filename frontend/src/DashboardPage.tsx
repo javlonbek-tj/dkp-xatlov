@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiFetch } from './api'
 import { Alert, Card, DatePicker, Empty, Progress, Select, Space, Statistic, Typography } from 'antd'
-import { AlertOutlined, BarChartOutlined, CheckCircleOutlined, FileSearchOutlined, HomeOutlined, SwapOutlined } from '@ant-design/icons'
+import { AimOutlined, AlertOutlined, BarChartOutlined, CheckCircleOutlined, FileSearchOutlined, HomeOutlined, SwapOutlined } from '@ant-design/icons'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -13,6 +13,10 @@ type DashboardData = {
   districts: DistrictOption[]
   geography: { regionCount: number; districtCount: number }
   xatlov: { districtCount: number; completedMfyCount: number; censusCount: number; migrationCount: number }
+  plan: {
+    deadline: string; fiveDayWorkDays: number; sixDayWorkDays: number; holidays: { date: string; name: string }[]
+    objectCount: number; completedObjectCount: number; remainingObjectCount: number
+  }
   mkd: { inProgressCount: number }
   rad: { month: number; year: number; monthlyLimit: number; rejectedApplications: number; remainingLimit: number }
   overdue: { total: number; stages: { stage: string; count: number }[] }
@@ -42,6 +46,9 @@ function DashboardPage({ token }: { token: string; user: User }) {
 
   const percent = (part: number, total: number) => (total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0)
   const overdueTotal = data?.overdue.total ?? 0
+  const plan = data?.plan
+  const dailyPlan = (workDays?: number) => (plan && workDays ? Math.ceil(plan.remainingObjectCount / workDays) : 0)
+  const planDeadline = plan ? plan.deadline.split('-').reverse().join('.') : ''
 
   return <div><Space direction="vertical" size="large" className="w-full">
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -70,6 +77,18 @@ function DashboardPage({ token }: { token: string; user: User }) {
         </div>
       </Card>)}
     </div>
+    <Card loading={loading} title={<span className="flex items-center gap-2"><AimOutlined className="text-violet-600" />Xatlov rejasi · {planDeadline} gacha</span>}>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <Statistic title="Jami obyekt" value={plan?.objectCount ?? 0} />
+        <Statistic title="Xatlov yakunlangan" value={plan?.completedObjectCount ?? 0} />
+        <Statistic title="Qolgan obyekt" value={plan?.remainingObjectCount ?? 0} />
+        <Statistic title="Qolgan ish kuni (5 / 6 kunlik)" value={`${plan?.fiveDayWorkDays ?? 0} / ${plan?.sixDayWorkDays ?? 0}`} />
+        <Statistic title="Kunlik reja · 5 kunlik hafta" value={dailyPlan(plan?.fiveDayWorkDays)} valueStyle={{ color: '#7c3aed' }} />
+        <Statistic title="Kunlik reja · 6 kunlik hafta" value={dailyPlan(plan?.sixDayWorkDays)} valueStyle={{ color: '#7c3aed' }} />
+      </div>
+      <Progress className="!mt-4" percent={percent(plan?.completedObjectCount ?? 0, plan?.objectCount ?? 0)} strokeColor="#7c3aed" />
+      <Typography.Text type="secondary" className="text-xs">Bayram kunlari chiqarilgan ({plan?.holidays.length ?? 0} kun). Har bir tuman bo‘yicha reja Xatlov sahifasida.</Typography.Text>
+    </Card>
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card loading={loading} title={<span className="flex items-center gap-2"><FileSearchOutlined className="text-emerald-600" />Xatlov · so‘nggi yozuvlar</span>}>
         <div className="grid grid-cols-2 gap-4">
