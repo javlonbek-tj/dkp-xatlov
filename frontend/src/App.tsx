@@ -11,6 +11,8 @@ import RadLimitPage from './RadLimitPage'
 import OverdueApplicationsPage from './OverdueApplicationsPage'
 import DashboardPage from './DashboardPage'
 import CallLogPage from './CallLogPage'
+import PaymentEntryPage from './PaymentEntryPage'
+import PaymentsPage from './PaymentsPage'
 import AppLayout, { type Page } from './AppLayout'
 import { queryClient } from './api'
 
@@ -18,7 +20,7 @@ type User = {
   id: string
   username: string
   fullName: string
-  role: 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+  role: 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
   isGroupLeader?: boolean
 }
 
@@ -55,7 +57,8 @@ function App() {
 
       setToken(loginData.token)
       setUser(currentUserData.user)
-      setPage(currentUserData.user.role === 'ADMIN' ? 'admin' : currentUserData.user.role === 'DISTRICT_HEAD' ? 'xatlov' : 'dashboard')
+      const role: User['role'] = currentUserData.user.role
+      setPage(role === 'ADMIN' ? 'admin' : role === 'DISTRICT_HEAD' ? 'xatlov' : role === 'PAYMENT_SPECIALIST' ? 'payments' : 'dashboard')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Kirish amalga oshmadi')
     } finally {
@@ -89,7 +92,8 @@ function App() {
     const props = { token, user }
     return (
       <AppLayout user={user} page={page} error={error} onNavigate={setPage} onLogout={signOut}>
-        {user.role === 'DISTRICT_HEAD' ? (page === 'report' ? <ReportPage {...props} /> : page === 'dashboard' ? <DashboardPage {...props} /> : <XatlovEmployeesTab {...props} />)
+        {user.role === 'PAYMENT_SPECIALIST' ? <PaymentEntryPage {...props} />
+          : user.role === 'DISTRICT_HEAD' ? (page === 'report' ? <ReportPage {...props} /> : page === 'dashboard' ? <DashboardPage {...props} /> : page === 'payments' ? <PaymentsPage {...props} /> : <XatlovEmployeesTab {...props} />)
           : page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
           : page === 'assignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage {...props} />
           : page === 'report' ? <ReportPage {...props} />
@@ -97,6 +101,7 @@ function App() {
           : page === 'mkd' ? <MkdPage {...props} />
           : page === 'rad' ? <RadLimitPage {...props} />
           : page === 'overdue' ? <OverdueApplicationsPage {...props} />
+          : page === 'payments' ? <PaymentsPage {...props} />
           : page === 'calls' && user.role !== 'VIEWER' && user.role !== 'REGIONAL_EMPLOYEE' ? <CallLogPage {...props} />
           : <DashboardPage {...props} />}
       </AppLayout>

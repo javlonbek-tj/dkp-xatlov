@@ -17,6 +17,8 @@ enum UserRole {
   VIEWER
   // Enters the daily work of one district's employees; linked to that district, not to a region.
   DISTRICT_HEAD
+  // Enters the payments they collected in their district; linked to that district.
+  PAYMENT_SPECIALIST
 }
 
 enum CallStatus {
@@ -32,8 +34,10 @@ model User {
   phone        String?
   passwordHash String
   role         UserRole
-  // Set only for district heads.
+  // Set only for district heads and payment specialists.
   districtId   String?
+  // Payment specialists only.
+  position     String?
   // Viewers only: sees every region instead of the single region they are assigned to.
   allRegions   Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -42,6 +46,7 @@ model User {
   district          District?                  @relation("DistrictHeads", fields: [districtId], references: [id], onDelete: Restrict)
   regionAssignments EmployeeRegionAssignment[]
   sessions          Session[]
+  payments          PaymentRecord[]
 
   @@index([role])
   @@index([districtId])
@@ -97,6 +102,7 @@ model District {
   callLogs CallLog[]
   heads     User[]             @relation("DistrictHeads")
   employees DistrictEmployee[]
+  payments  PaymentRecord[]
 
   @@unique([name, regionId])
   @@index([regionId])
@@ -224,6 +230,26 @@ model EmployeeDailyWork {
 
   @@unique([employeeId, recordDate])
   @@index([recordDate])
+}
+
+// One collected payment entered by a payment specialist; the district is kept even if the specialist moves.
+model PaymentRecord {
+  id                String   @id @default(cuid())
+  userId            String
+  districtId        String
+  recordDate        DateTime @db.Date
+  applicationNumber String
+  // Million so'm.
+  amount            Decimal  @db.Decimal(14, 3)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@index([userId, recordDate])
+  @@index([districtId, recordDate])
+  @@index([applicationNumber])
 }
 
 model EmployeeRegionAssignment {

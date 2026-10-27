@@ -5,7 +5,7 @@ import { Alert, Button, Card, Input, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { employeeText, exportExcel } from './excel-export'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
 type Assignment = { id: string; user: { fullName: string; phone: string | null } }
 type Region = { id: string; name: string; groupLeaderAssignmentId: string | null }

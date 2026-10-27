@@ -6,7 +6,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { exportExcel } from './excel-export'
 import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; regionId: string; region: { id: string; name: string }

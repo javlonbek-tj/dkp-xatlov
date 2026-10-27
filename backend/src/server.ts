@@ -15,6 +15,7 @@ import { callLogRouter } from './call-log.js';
 import { reportRouter } from './report.js';
 import { assignmentsRouter } from './assignments.js';
 import { districtEmployeesRouter } from './district-employees.js';
+import { paymentsRouter } from './payments.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -31,6 +32,7 @@ app.use('/api/call-log', callLogRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/assignments', assignmentsRouter);
 app.use('/api/district-employees', districtEmployeesRouter);
+app.use('/api/payments', paymentsRouter);
 
 app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok' });

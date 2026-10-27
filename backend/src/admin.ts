@@ -107,7 +107,8 @@ router.get('/users', async (request, response, next) => {
   try {
     const regionIds = await managedRegionIds(request);
     const users = await prisma.user.findMany({
-      where: regionIds ? { role: { not: UserRole.ADMIN } } : undefined,
+      // Payment specialists are kept on their own tab.
+      where: { role: { notIn: regionIds ? [UserRole.ADMIN, UserRole.PAYMENT_SPECIALIST] : [UserRole.PAYMENT_SPECIALIST] } },
       orderBy: { fullName: 'asc' },
       select: {
         id: true,
@@ -133,8 +134,8 @@ router.post('/users', adminOnly, async (request, response, next) => {
     const fullName = text(request.body?.fullName, 'Full name', 150);
     const userPassword = password(request.body?.password);
     const role = request.body?.role as UserRole;
-    // District heads are created from their district so they are always linked to it.
-    if (!Object.values(UserRole).includes(role) || role === UserRole.DISTRICT_HEAD) {
+    // District heads and payment specialists are created with their district so they are always linked to it.
+    if (!Object.values(UserRole).includes(role) || role === UserRole.DISTRICT_HEAD || role === UserRole.PAYMENT_SPECIALIST) {
       throw new ApiError(400, 'INVALID_ROLE', 'Choose a valid employee role');
     }
 
@@ -187,8 +188,9 @@ router.patch('/users/:userId', async (request, response, next) => {
       if (role !== existing.role && existing.role !== UserRole.VIEWER && existing._count.regionAssignments > 0) {
         throw new ApiError(409, 'ASSIGNMENTS_EXIST', 'Remove the user’s region assignments before changing their role');
       }
-      if (role !== existing.role && (role === UserRole.DISTRICT_HEAD || existing.role === UserRole.DISTRICT_HEAD)) {
-        throw new ApiError(400, 'INVALID_ROLE', 'The district head role cannot be changed');
+      const districtRoles: UserRole[] = [UserRole.DISTRICT_HEAD, UserRole.PAYMENT_SPECIALIST];
+      if (role !== existing.role && (districtRoles.includes(role) || districtRoles.includes(existing.role))) {
+        throw new ApiError(400, 'INVALID_ROLE', 'The district head and payment specialist roles cannot be changed');
       }
       data.role = role;
     }
@@ -295,7 +297,7 @@ router.post('/regions/:regionId/assignments', async (request, response, next) =>
     await requireRegionAccess(request, regionId);
     const userId = text(request.body?.userId, 'User', 100);
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, allRegions: true, _count: { select: { regionAssignments: true } } } });
-    if (!user || user.role === UserRole.ADMIN || user.role === UserRole.DISTRICT_HEAD) {
+    if (!user || user.role === UserRole.ADMIN || user.role === UserRole.DISTRICT_HEAD || user.role === UserRole.PAYMENT_SPECIALIST) {
       throw new ApiError(400, 'INVALID_EMPLOYEE', 'Only employee accounts can be assigned to a region');
     }
     if (user.role === UserRole.VIEWER && (user.allRegions || user._count.regionAssignments > 0)) {

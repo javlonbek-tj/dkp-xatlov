@@ -7,7 +7,7 @@ import { exportExcel, type ExportHeader } from './excel-export'
 import { exportPdf } from './pdf-export'
 import { apiFetch, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
 type Head = { id: string; username: string; fullName: string; phone: string | null }
 type District = { id: string; name: string; regionId: string; region: { id: string; name: string }; heads?: Head[] }

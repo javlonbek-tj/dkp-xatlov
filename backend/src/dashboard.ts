@@ -24,7 +24,7 @@ function parseDate(value: unknown, field: string): Date | undefined {
   return date;
 }
 
-function tashkentToday(now = new Date()) {
+export function tashkentToday(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
   const part = (type: string) => parts.find((item) => item.type === type)!.value;
   return { date: new Date(`${part('year')}-${part('month')}-${part('day')}T00:00:00.000Z`), month: Number(part('month')), year: Number(part('year')) };

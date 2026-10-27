@@ -14,11 +14,12 @@ import {
   SolutionOutlined,
   TableOutlined,
   TeamOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role; isGroupLeader?: boolean }
-export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'calls'
+export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'calls' | 'payments'
 
 const roleLabels: Record<Role, string> = {
   ADMIN: 'Administrator',
@@ -26,6 +27,7 @@ const roleLabels: Record<Role, string> = {
   REGIONAL_EMPLOYEE: 'Hududiy xodim',
   VIEWER: 'Kuzatuvchi',
   DISTRICT_HEAD: 'Tuman rahbari',
+  PAYMENT_SPECIALIST: 'To‘lov undirish mutaxassisi',
 }
 
 const pageLabels: Record<Page, string> = {
@@ -38,6 +40,7 @@ const pageLabels: Record<Page, string> = {
   rad: 'RAD limitlari',
   overdue: 'Muddati o‘tgan arizalar',
   calls: 'Qoʻngʻiroqlar jurnali',
+  payments: 'To‘lov undirish',
 }
 
 function initials(name: string) {
@@ -52,11 +55,15 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   // District heads enter their employees' daily work on the Xatlov page and see their own district's dashboard and report.
-  const items: MenuProps['items'] = user.role === 'DISTRICT_HEAD' ? [
+  // Payment specialists only enter their own payments.
+  const items: MenuProps['items'] = user.role === 'PAYMENT_SPECIALIST' ? [
+    { key: 'payments', icon: <WalletOutlined />, label: pageLabels.payments },
+  ] : user.role === 'DISTRICT_HEAD' ? [
     { type: 'group', label: 'Monitoring', children: [
       { key: 'dashboard', icon: <HomeOutlined />, label: pageLabels.dashboard },
       { key: 'report', icon: <TableOutlined />, label: pageLabels.report },
       { key: 'xatlov', icon: <FileSearchOutlined />, label: pageLabels.xatlov },
+      { key: 'payments', icon: <WalletOutlined />, label: pageLabels.payments },
     ] },
   ] : [
     { type: 'group', label: 'Monitoring', children: [
@@ -66,6 +73,7 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
       { key: 'mkd', icon: <BuildOutlined />, label: pageLabels.mkd },
       { key: 'rad', icon: <BarChartOutlined />, label: pageLabels.rad },
       { key: 'overdue', icon: <AlertOutlined />, label: 'Muddati o‘tgan' },
+      { key: 'payments', icon: <WalletOutlined />, label: pageLabels.payments },
       ...(user.role !== 'VIEWER' && user.role !== 'REGIONAL_EMPLOYEE' ? [{ key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' }] : []),
     ] },
     ...(user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE' ? [{ type: 'group' as const, label: 'Boshqaruv', children: [

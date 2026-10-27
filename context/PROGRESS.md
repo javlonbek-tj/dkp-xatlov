@@ -439,3 +439,14 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 
 - The info line above the "Tumanlar bo‘yicha" table shows only the working days left to 31.12.2027 for a 5-day and a 6-day week; the colour explanations and the holiday list were removed (holidays are still excluded from the count).
 - Verified with `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Payment collection - Specialists and daily payments
+
+- New role `PAYMENT_SPECIALIST` ("To‘lov undirish mutaxassisi"), linked to one district through `User.districtId`, with `User.position`. New `PaymentRecord` (specialist, district, date, application number, amount in million so‘m with 3 decimals). Migration `20261027000000_payment_records` (additive) — not yet applied on Railway.
+- `backend/src/payments.ts` (`/api/payments`):
+  - Specialists: `GET /mine`, `POST /records`, `PATCH`/`DELETE /records/:id`. Dates up to today (Tashkent); a specialist changes only records entered today, administrators any record. A repeated application number is refused with `DUPLICATE_APPLICATION` unless `allowDuplicate` is sent.
+  - Analysis (`GET /`, `GET /specialists/:id/records`) for every other role in the report scope (district heads see their district): daily, Monday–Friday and month-to-date counts and sums per specialist and per district.
+  - Specialist accounts (`/specialists`) are kept by administrators only.
+- Admin users list, user role changes and region assignments exclude payment specialists; district heads list filters by role.
+- Frontend: specialists see only "To‘lov undirish" (`PaymentEntryPage`: date, application number, amount, the day's list, day/week/month totals, edit/delete today's records, confirmation for a repeated number). Everyone else has "To‘lov undirish" in the menu (`PaymentsPage`: "Mutaxassislar kesimida" with the three smallest weekly sums in red and an "Arizalar" window, and "Tumanlar bo‘yicha"; default region as on Xatlov; Excel/PDF). Admin panel has a "To‘lov mutaxassislari" tab (`PaymentSpecialistsTab`).
+- Verified with `prisma validate`, a diff of the Railway database against the schema (matches the migration), backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

@@ -129,7 +129,7 @@ router.get('/', async (request, response, next) => {
         orderBy: [{ region: { name: 'asc' } }, { name: 'asc' }],
         select: {
           id: true, name: true, regionId: true, region: { select: { id: true, name: true } },
-          ...(canManage(user) ? { heads: { select: userSelect, orderBy: { fullName: 'asc' as const } } } : {}),
+          ...(canManage(user) ? { heads: { where: { role: UserRole.DISTRICT_HEAD }, select: userSelect, orderBy: { fullName: 'asc' as const } } } : {}),
         },
       }),
       prisma.districtEmployee.findMany({

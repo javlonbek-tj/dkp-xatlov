@@ -8,7 +8,7 @@ import { exportPdf } from './pdf-export'
 import XatlovEmployeesTab from './XatlovEmployeesTab'
 import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; engineerCount: number | null; regionId: string

@@ -4,7 +4,7 @@ import { apiFetch } from './api'
 import { Alert, Card, DatePicker, Empty, Progress, Select, Space, Statistic, Typography } from 'antd'
 import { AimOutlined, AlertOutlined, BarChartOutlined, CheckCircleOutlined, FileSearchOutlined, HomeOutlined, SwapOutlined } from '@ant-design/icons'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
 type DistrictOption = { id: string; name: string; regionId: string; region: { id: string; name: string } }
 type DashboardData = {

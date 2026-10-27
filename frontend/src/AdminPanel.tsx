@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import PaymentSpecialistsTab from './PaymentSpecialistsTab'
 import { apiFetch } from './api'
 import {
   Alert,
@@ -18,7 +19,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 
-type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD'
+type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type Employee = { id: string; username: string; fullName: string; phone?: string | null; role: Role }
 type RegionAssignment = { id: string; regionId: string; user: Employee }
 type Region = {
@@ -54,6 +55,7 @@ const roleLabels: Record<Role, string> = {
   REGIONAL_EMPLOYEE: 'Hududiy xodim',
   VIEWER: 'Kuzatuvchi',
   DISTRICT_HEAD: 'Tuman rahbari',
+  PAYMENT_SPECIALIST: 'To‘lov undirish mutaxassisi',
 }
 
 const api = <T,>(token: string, path: string, init?: RequestInit) => apiFetch<T>(token, `/api/admin${path}`, init)
@@ -270,7 +272,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
     },
     {
       title: 'Turi', key: 'role', width: 160, align: 'center',
-      render: (_, assignment) => <Tag color={{ ADMIN: 'red', REPUBLIC_EMPLOYEE: 'blue', REGIONAL_EMPLOYEE: 'green', VIEWER: 'default', DISTRICT_HEAD: 'orange' }[assignment.user.role]} className="!m-0">{roleLabels[assignment.user.role]}</Tag>,
+      render: (_, assignment) => <Tag color={{ ADMIN: 'red', REPUBLIC_EMPLOYEE: 'blue', REGIONAL_EMPLOYEE: 'green', VIEWER: 'default', DISTRICT_HEAD: 'orange', PAYMENT_SPECIALIST: 'gold' }[assignment.user.role]} className="!m-0">{roleLabels[assignment.user.role]}</Tag>,
     },
     {
       title: 'Biriktirilgan tumanlar', key: 'districts',
@@ -316,7 +318,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
                 <div className="mb-4 flex flex-wrap justify-between gap-3">
                   <Space wrap>
                     <Input.Search allowClear placeholder="F.I.Sh., login yoki telefon bo‘yicha qidirish" className="w-72" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} />
-                    <Select allowClear placeholder="Turi" className="min-w-44" value={userRoleFilter} options={Object.entries(roleLabels).map(([value, label]) => ({ value, label }))} onChange={setUserRoleFilter} />
+                    <Select allowClear placeholder="Turi" className="min-w-44" value={userRoleFilter} options={Object.entries(roleLabels).filter(([value]) => value !== 'PAYMENT_SPECIALIST').map(([value, label]) => ({ value, label }))} onChange={setUserRoleFilter} />
                     <Select allowClear showSearch optionFilterProp="label" placeholder="Hudud" className="min-w-52" value={userRegionFilter} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={setUserRegionFilter} />
                   </Space>
                   <Button type="primary" onClick={() => openUserEditor()}>Xodim qo‘shish</Button>
@@ -422,7 +424,8 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
                 </>}
               </Space>,
             },
-          ].filter((item) => isAdmin || item.key !== 'users')} />
+            { key: 'paymentSpecialists', label: 'To‘lov mutaxassislari', children: <PaymentSpecialistsTab token={token} districts={districts} /> },
+          ].filter((item) => isAdmin || (item.key !== 'users' && item.key !== 'paymentSpecialists'))} />
         </Card>
       </Space>
 
@@ -450,7 +453,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
           <Form.Item label="Telefon raqami" name="phone"><Input maxLength={30} placeholder="+998-90-123-45-67" /></Form.Item>
           {isAdmin && <>
             <Form.Item label="Turi" name="role" rules={[{ required: true }]}>
-              <Select options={Object.entries(roleLabels).filter(([value]) => value !== 'DISTRICT_HEAD' || userEditor?.role === 'DISTRICT_HEAD').map(([value, label]) => ({ value, label }))} />
+              <Select options={Object.entries(roleLabels).filter(([value]) => value !== 'PAYMENT_SPECIALIST' && (value !== 'DISTRICT_HEAD' || userEditor?.role === 'DISTRICT_HEAD')).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
             {editedUserRole === 'VIEWER' && <Form.Item label="Ko‘rish doirasi" name="viewerScope" rules={[{ required: true, message: 'Viloyatni yoki Respublikani tanlang' }]} extra="Kuzatuvchi faqat shu viloyat yoki butun Respublika ma’lumotlarini ko‘radi">
               <Select showSearch optionFilterProp="label" placeholder="Viloyat yoki Respublika" options={[
