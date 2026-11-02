@@ -37,6 +37,7 @@ type District = {
   xatlovEmployeeCount: number | null
   objectCount: number | null
   mfyCount: number | null
+  dailyMigrationPlan: number | null
   region: { id: string; name: string }
   republicEmployeeAssignment: RegionAssignment | null
   regionalEmployeeAssignment: RegionAssignment | null
@@ -123,9 +124,10 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
       xatlovEmployeeCount: record.xatlovEmployeeCount,
       objectCount: record.objectCount,
       mfyCount: record.mfyCount,
+      dailyMigrationPlan: record.dailyMigrationPlan,
       republicEmployeeAssignmentId: record.republicEmployeeAssignment?.id ?? null,
       regionalEmployeeAssignmentId: record.regionalEmployeeAssignment?.id ?? null,
-    } : { engineerCount: null, xatlovEmployeeCount: null, objectCount: null, mfyCount: null })
+    } : { engineerCount: null, xatlovEmployeeCount: null, objectCount: null, mfyCount: null, dailyMigrationPlan: null })
   }
 
   const userColumns: ColumnsType<UserRecord> = [
@@ -169,6 +171,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
         { title: 'MFY', dataIndex: 'mfyCount', width: 90, align: 'center', render: (value: number | null) => value ?? '—' },
       ],
     },
+    { title: <span className="leading-tight">Kunlik migratsiya<br />rejasi</span>, dataIndex: 'dailyMigrationPlan', width: 110, align: 'center', render: (value: number | null) => value ?? '—' },
     {
       title: 'Amallar', key: 'actions', width: isAdmin ? 200 : 120, fixed: 'right', align: 'center',
       render: (_, record) => (
@@ -339,7 +342,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
                   size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"
                   rowKey="id" columns={districtColumns} dataSource={visibleDistricts} sticky={{ offsetHeader: 64 }}
                   pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }}
-                  scroll={{ x: isAdmin ? 1140 : 1060 }}
+                  scroll={{ x: isAdmin ? 1250 : 1170 }}
                 />
               </>,
             },
@@ -517,6 +520,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
           <Form.Item label="Shundan xatlovga biriktirilgan xodimlar soni" name="xatlovEmployeeCount"><InputNumber className="w-full" min={0} precision={0} /></Form.Item>
           <Form.Item label="Jami obyektlar soni" name="objectCount"><InputNumber className="w-full" min={0} precision={0} /></Form.Item>
           <Form.Item label="Jami MFY soni" name="mfyCount"><InputNumber className="w-full" min={0} precision={0} /></Form.Item>
+          <Form.Item label="Bir kunda bajarilishi lozim bo‘lgan migratsiya soni" name="dailyMigrationPlan"><InputNumber className="w-full" min={0} precision={0} /></Form.Item>
           <Form.Item label="Respublika xodimi" name="republicEmployeeAssignmentId">
             <Select allowClear options={districtRepublicOptions} onChange={(value) => districtForm.setFieldValue('republicEmployeeAssignmentId', value ?? null)} />
           </Form.Item>

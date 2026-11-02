@@ -404,7 +404,7 @@ router.get('/districts', async (request, response, next) => {
   }
 });
 
-const countFields = ['engineerCount', 'xatlovEmployeeCount', 'objectCount', 'mfyCount'] as const;
+const countFields = ['engineerCount', 'xatlovEmployeeCount', 'objectCount', 'mfyCount', 'dailyMigrationPlan'] as const;
 
 async function saveDistrict(request: Request, response: Response, next: NextFunction, isCreate: boolean) {
   try {

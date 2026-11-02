@@ -101,7 +101,7 @@ function mapDatabaseError(error: unknown, next: NextFunction): void {
   next(error);
 }
 
-// Employees in scope with their work on the given date and their Monday–Friday totals for that week.
+// Employees in scope with their work on the given date and their Monday–Sunday totals for that week.
 router.get('/', async (request, response, next) => {
   try {
     const user = request.auth!;
@@ -111,12 +111,10 @@ router.get('/', async (request, response, next) => {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
     const date = parseDate(request.query.date);
-    // Weekly totals cover Monday to Friday of the selected date's week, up to the selected date, as on the district tab.
+    // Weekly totals cover Monday to Sunday of the selected date's week, up to the selected date, as on the district tab.
     const weekStart = new Date(date);
     weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-    const friday = new Date(weekStart);
-    friday.setUTCDate(weekStart.getUTCDate() + 4);
-    const weekEnd = date < friday ? date : friday;
+    const weekEnd = date;
     const scope = districtScope(user);
     const locationFilter: Prisma.DistrictWhereInput = {
       ...scope,

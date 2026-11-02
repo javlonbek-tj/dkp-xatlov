@@ -112,20 +112,18 @@ function mapDatabaseError(error: unknown, next: NextFunction): void {
   next(error);
 }
 
-// Monday of the date's week up to the date or Friday, whichever is earlier, as on the Xatlov page; and the month up to the date.
+// Monday of the date's week up to the date, as on the Xatlov page; and the month up to the date.
 function periods(date: Date) {
   const weekStart = new Date(date);
   weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-  const friday = new Date(weekStart);
-  friday.setUTCDate(weekStart.getUTCDate() + 4);
   const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-  return { weekStart, weekEnd: date < friday ? date : friday, monthStart };
+  return { weekStart, weekEnd: date, monthStart };
 }
 
 type Totals = { count: number; amount: number };
 const emptyTotals = (): { daily: Totals; weekly: Totals; monthly: Totals } => ({ daily: { count: 0, amount: 0 }, weekly: { count: 0, amount: 0 }, monthly: { count: 0, amount: 0 } });
 
-// Daily, weekly (Mon–Fri) and monthly payment counts and sums per key, from the records of the month up to the date.
+// Daily, weekly (Mon–Sun) and monthly payment counts and sums per key, from the records of the month up to the date.
 function summarize<T extends { recordDate: Date; amount: Prisma.Decimal }>(records: T[], date: Date, key: (record: T) => string) {
   const { weekStart, weekEnd } = periods(date);
   const totals = new Map<string, ReturnType<typeof emptyTotals>>();

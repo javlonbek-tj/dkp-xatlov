@@ -450,3 +450,21 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Admin users list, user role changes and region assignments exclude payment specialists; district heads list filters by role.
 - Frontend: specialists see only "To‘lov undirish" (`PaymentEntryPage`: date, application number, amount, the day's list, day/week/month totals, edit/delete today's records, confirmation for a repeated number). Everyone else has "To‘lov undirish" in the menu (`PaymentsPage`: "Mutaxassislar kesimida" with the three smallest weekly sums in red and an "Arizalar" window, and "Tumanlar bo‘yicha"; default region as on Xatlov; Excel/PDF). Admin panel has a "To‘lov mutaxassislari" tab (`PaymentSpecialistsTab`).
 - Verified with `prisma validate`, a diff of the Railway database against the schema (matches the migration), backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Weekly totals - Monday to Sunday (Du–Ya)
+
+- Some districts also work on Saturday and Sunday, so weekly totals now cover Monday of the selected date's week up to the selected date, including weekends (previously Monday–Friday).
+- Applies to the Xatlov page (weekly census/migration, days worked, "1 xodimga kunlik migratsiya"), the Xatlov employees tab, the report ("Du–Ya" and "1 xodimga kunlik") and payments (weekly totals).
+- Labels changed from "Du–Ju" to "Du–Ya" on screen and in Excel exports. The employees tab's optimistic save now updates weekly totals for weekend dates too.
+- The finish-date forecast / working-day plan is unchanged.
+
+## District daily migration plan and expandable week (Du–Ya) columns
+
+- Districts have a new optional "Bir kunda bajarilishi lozim bo‘lgan migratsiya soni" (`District.dailyMigrationPlan`), edited in the district form on the districts tab and shown in the districts table. Migration: `20261102000000_district_daily_migration_plan`.
+- Report: new "bir kunlik reja" column before "bir kunda" (summed in the region row). Clicking the "Du–Ya" header opens the migration of each day (Du, Se, Ch, Pa, Ju, Sh, Ya) plus "Jami"; clicking again shows only "Du–Ya".
+- Xatlov page (districts tab): new "Kunlik migratsiya rejasi" column under "Natijalar". Clicking "Haftalik (Du–Ya)" opens Monday–Sunday values for both "Xatlov soni" and "Migratsiya soni", each with "Jami"; clicking again closes them. The totals row follows the open state.
+- The backend returns per-day values for the week (`weekMigration` in the report, `weekByDay` on the Xatlov page). Excel/PDF exports include the day columns while they are open; highlight column positions were adjusted.
+
+## Report - all overdue stages
+
+- "Muddat kechikishi" in the report now shows "1-3 kun", "4-7 kun" and "8-14 kun" before "15-30 kungacha" and "1 oydan ortiq", from the same latest overdue snapshot. Like the other stage columns, the three highest districts are red. Excel/PDF exports include the new columns; highlight positions were shifted.

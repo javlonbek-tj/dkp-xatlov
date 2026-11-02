@@ -64,12 +64,10 @@ router.get('/', requireAuth, async (request, response, next) => {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
     const date = parseDate(request.query.date);
-    // Weekly totals cover Monday to Friday of the selected date's week, up to the selected date.
+    // Weekly totals cover Monday to Sunday of the selected date's week, up to the selected date.
     const weekStart = new Date(date);
     weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-    const friday = new Date(weekStart);
-    friday.setUTCDate(weekStart.getUTCDate() + 4);
-    const weekEnd = date < friday ? date : friday;
+    const weekEnd = date;
     // The finish-date forecast uses the pace of the last 5 working days up to the selected date.
     const paceStart = lastWorkDaysStart(date, 5);
     const scope = readableDistrictScope(user);
@@ -86,11 +84,9 @@ router.get('/', requireAuth, async (request, response, next) => {
     });
     const [records, weekly, pace] = await Promise.all([
       prisma.xatlovRecord.findMany({ where: { district: locationFilter, recordDate: date }, include: recordInclude, orderBy: { district: { name: 'asc' } } }),
-      prisma.xatlovRecord.groupBy({
-        by: ['districtId'],
+      prisma.xatlovRecord.findMany({
         where: { district: locationFilter, recordDate: { gte: weekStart, lte: weekEnd } },
-        _sum: { censusCount: true, migrationCount: true },
-        _count: { _all: true },
+        select: { districtId: true, recordDate: true, censusCount: true, migrationCount: true },
       }),
       prisma.xatlovRecord.groupBy({
         by: ['districtId'],
@@ -99,16 +95,21 @@ router.get('/', requireAuth, async (request, response, next) => {
         _count: { _all: true },
       }),
     ]);
-    const weeklyByDistrict = new Map(weekly.map((item) => [item.districtId, { ...item._sum, days: item._count._all }]));
+    const weekOf = (districtId: string) => weekly.filter((item) => item.districtId === districtId);
     const paceByDistrict = new Map(pace.map((item) => [item.districtId, { migrationCount: item._sum.migrationCount ?? 0, days: item._count._all }]));
     response.json({
       districts,
       records: records.map((record) => ({
         ...record,
-        weeklyCensusCount: weeklyByDistrict.get(record.districtId)?.censusCount ?? 0,
-        weeklyMigrationCount: weeklyByDistrict.get(record.districtId)?.migrationCount ?? 0,
+        weeklyCensusCount: weekOf(record.districtId).reduce((sum, item) => sum + item.censusCount, 0),
+        weeklyMigrationCount: weekOf(record.districtId).reduce((sum, item) => sum + item.migrationCount, 0),
         // Days worked this week = days with a saved record from Monday on.
-        weeklyDays: weeklyByDistrict.get(record.districtId)?.days ?? 0,
+        weeklyDays: weekOf(record.districtId).length,
+        // Census and migration on each day of the week, Monday first; null for a day without a record.
+        weekByDay: Array.from({ length: 7 }, (_, day) => {
+          const item = weekOf(record.districtId).find((entry) => (entry.recordDate.getUTCDay() + 6) % 7 === day);
+          return item ? { censusCount: item.censusCount, migrationCount: item.migrationCount } : null;
+        }),
         // Migration and days with a record in the last 5 working days.
         paceMigrationCount: paceByDistrict.get(record.districtId)?.migrationCount ?? 0,
         paceDays: paceByDistrict.get(record.districtId)?.days ?? 0,

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiFetch } from './api'
 import { Alert, Button, Card, DatePicker, Select, Space, Table, Tag, Typography } from 'antd'
+import { DownOutlined, RightOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { employeeText, exportExcel, type ExportHeader } from './excel-export'
@@ -19,10 +20,16 @@ type ReportRow = {
   xatlovEmployeeCount: number | null
   objectCount: number | null
   mfyCount: number | null
+  dailyMigrationPlan: number | null
   xatlov: { recordDate: string; completedMfyCount: number; censusCount: number; completedObjectCount: number | null; migrationCount: number; paymentDebt: number | null } | null
   weeklyMigrationCount: number | null
   weeklyDays: number
+  // Monday first; null for a day without a record.
+  weekMigration: (number | null)[]
   rad: { monthlyLimit: number; rejectedApplications: number } | null
+  overdue1to3: number
+  overdue4to7: number
+  overdue8to14: number
   overdue15to30: number
   overdueOver30: number
   // In-progress MKD count by year.
@@ -48,14 +55,19 @@ type Line = {
   mfyCount: number | null
   completedMfyCount: number | null
   censusCount: number | null
+  dailyMigrationPlan: number | null
   dailyCompletedObjects: number | null
   weeklyMigration: number | null
+  weekMigration: (number | null)[]
   employeeDays: number | null
   migrationPerEmployeeDay: number | null
   radPlan: number | null
   radActual: number | null
   radPercent: number | null
   radRemainder: number | null
+  overdue1to3: number
+  overdue4to7: number
+  overdue8to14: number
   overdue15to30: number
   overdueOver30: number
   mkdTotal: number | null
@@ -63,10 +75,11 @@ type Line = {
   paymentDebt: number | null
 }
 
+const weekDays = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya']
 const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
 const summedFields = [
   'engineerCount', 'xatlovEmployeeCount', 'objectCount', 'mfyCount', 'completedMfyCount', 'censusCount',
-  'dailyCompletedObjects', 'weeklyMigration', 'employeeDays', 'radPlan', 'radActual', 'overdue15to30', 'overdueOver30', 'mkdTotal', 'paymentDebt',
+  'dailyMigrationPlan', 'dailyCompletedObjects', 'weeklyMigration', 'employeeDays', 'radPlan', 'radActual', 'overdue1to3', 'overdue4to7', 'overdue8to14', 'overdue15to30', 'overdueOver30', 'mkdTotal', 'paymentDebt',
 ] as const
 
 // Migration per Xatlov employee per worked day of the week.
@@ -93,14 +106,19 @@ function toLine(row: ReportRow, index: number): Line {
     mfyCount: row.mfyCount,
     completedMfyCount: row.xatlov?.completedMfyCount ?? null,
     censusCount: row.xatlov?.completedObjectCount ?? null,
+    dailyMigrationPlan: row.dailyMigrationPlan,
     dailyCompletedObjects: row.xatlov?.migrationCount ?? null,
     weeklyMigration: row.weeklyMigrationCount,
+    weekMigration: row.weekMigration,
     employeeDays: row.weeklyDays && row.xatlovEmployeeCount ? row.weeklyDays * row.xatlovEmployeeCount : null,
     migrationPerEmployeeDay: perEmployeeDay(row.weeklyMigrationCount, row.weeklyDays * (row.xatlovEmployeeCount ?? 0)),
     radPlan,
     radActual,
     radPercent: percent(radActual, radPlan),
     radRemainder: radPlan === null || radActual === null ? null : radActual - radPlan,
+    overdue1to3: row.overdue1to3,
+    overdue4to7: row.overdue4to7,
+    overdue8to14: row.overdue8to14,
     overdue15to30: row.overdue15to30,
     overdueOver30: row.overdueOver30,
     mkdTotal: Object.keys(row.mkdInProgress).length ? Object.values(row.mkdInProgress).reduce((sum, value) => sum + value, 0) : null,
@@ -118,6 +136,10 @@ function totalLine(lines: Line[], region: NonNullable<ReportData['region']>): Li
   for (const line of lines) {
     for (const [year, count] of Object.entries(line.mkdByYear)) total.mkdByYear[year] = (total.mkdByYear[year] ?? 0) + count
   }
+  total.weekMigration = weekDays.map((_, day) => {
+    const values = lines.map((line) => line.weekMigration[day]).filter((value): value is number => value !== null)
+    return values.length ? values.reduce((sum, value) => sum + value, 0) : null
+  })
   total.migrationPerEmployeeDay = perEmployeeDay(total.weeklyMigration, total.employeeDays)
   total.radPercent = percent(total.radActual, total.radPlan)
   total.radRemainder = total.radPlan === null || total.radActual === null ? null : total.radActual - total.radPlan
@@ -138,6 +160,8 @@ function ReportPage({ token }: { token: string; user: User }) {
   const [regionId, setRegionId] = useState<string>()
   const [pdfError, setPdfError] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
+  // Clicking "Du–Ya" shows or hides the migration of each day of the week.
+  const [weekOpen, setWeekOpen] = useState(false)
   const query = useQuery({
     queryKey: ['report', token, date.format('YYYY-MM-DD'), regionId],
     queryFn: () => {
@@ -170,6 +194,9 @@ function ReportPage({ token }: { token: string; user: User }) {
     .sort((a, b) => (a.migrationPerEmployeeDay ?? 0) - (b.migrationPerEmployeeDay ?? 0))
     .slice(0, 3)
     .map((line) => line.key))
+  const worstOverdue1to3 = topThree((line) => line.overdue1to3)
+  const worstOverdue4to7 = topThree((line) => line.overdue4to7)
+  const worstOverdue8to14 = topThree((line) => line.overdue8to14)
   const worstOverdue15to30 = topThree((line) => line.overdue15to30)
   const worstOverdueOver30 = topThree((line) => line.overdueOver30)
   const worstMkd = topThree((line) => line.mkdTotal)
@@ -180,10 +207,23 @@ function ReportPage({ token }: { token: string; user: User }) {
   })
 
   // Key columns are shown as badges.
-  const badge = (field: keyof Line, title: string, color: string) => ({
+  const badge = (field: keyof Line, title: ReactNode, color: string) => ({
     title, align: 'center' as const,
     render: (_: unknown, line: Line) => line[field] === null ? '—' : <Tag color={color} className="!m-0 min-w-10 text-center !font-semibold">{formatNumber(line[field] as number)}</Tag>,
   })
+
+  const weekToggle = <span className="cursor-pointer select-none whitespace-nowrap text-purple-700" onClick={() => setWeekOpen((open) => !open)}>
+    Du–Ya {weekOpen ? <DownOutlined className="text-[10px]" /> : <RightOutlined className="text-[10px]" />}
+  </span>
+  const weeklyColumn = weekOpen
+    ? {
+      title: weekToggle,
+      children: [
+        ...weekDays.map((day, index) => ({ title: day, key: `week-${index}`, align: 'center' as const, render: (_: unknown, line: Line) => formatNumber(line.weekMigration[index]) })),
+        badge('weeklyMigration', 'Jami', 'purple'),
+      ],
+    }
+    : badge('weeklyMigration', weekToggle, 'purple')
 
   const columns: ColumnsType<Line> = [
     { title: 'T/r', dataIndex: 'index', align: 'center', render: (value: number | null) => value ?? '' },
@@ -208,7 +248,7 @@ function ReportPage({ token }: { token: string; user: User }) {
           render: (_: unknown, line: Line) => line.completedMfyCount === null ? '—' : <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{formatNumber(line.completedMfyCount)}</Tag>,
         },
         number('censusCount', 'Xatlov yakunlangan obyekt'),
-        { title: 'shundan', children: [badge('dailyCompletedObjects', 'bir kunda', 'blue'), badge('weeklyMigration', 'Du–Ju', 'purple'), number('migrationPerEmployeeDay', '1 xodimga kunlik', worstPerEmployee)] },
+        { title: 'shundan', children: [number('dailyMigrationPlan', 'bir kunlik reja'), badge('dailyCompletedObjects', 'bir kunda', 'blue'), weeklyColumn, number('migrationPerEmployeeDay', '1 xodimga kunlik', worstPerEmployee)] },
       ],
     },
     {
@@ -221,7 +261,11 @@ function ReportPage({ token }: { token: string; user: User }) {
     },
     {
       title: 'Muddat kechikishi',
-      children: [number('overdue15to30', '15-30 kungacha', worstOverdue15to30), number('overdueOver30', '1 oydan ortiq', worstOverdueOver30)],
+      children: [
+        number('overdue1to3', '1-3 kun', worstOverdue1to3),
+        number('overdue4to7', '4-7 kun', worstOverdue4to7),
+        number('overdue8to14', '8-14 kun', worstOverdue8to14),
+        number('overdue15to30', '15-30 kungacha', worstOverdue15to30), number('overdueOver30', '1 oydan ortiq', worstOverdueOver30)],
     },
     {
       title: 'MKD (jarayonda)',
@@ -239,7 +283,9 @@ function ReportPage({ token }: { token: string; user: User }) {
   // Excel and PDF share the title, columns and highlights.
   function exportReport(format: 'excel' | 'pdf') {
     // Leaf column positions of the red-highlighted cells, matching the table.
-    const radColumns = [13, 14, 15, 16]
+    // The day columns are exported too while they are open.
+    const shift = weekOpen ? weekDays.length : 0
+    const radColumns = [14, 15, 16, 17].map((column) => column + shift)
     const title = {
       lines: [`“Dolzarb 90 kunlik” doirasida ${data?.region?.name ?? ''} boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida`, 'MA’LUMOT'],
       note: `${date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
@@ -252,7 +298,7 @@ function ReportPage({ token }: { token: string; user: User }) {
           'Jami xodimlar soni',
           { title: 'shundan', children: ['xatlovga biriktirilgan xodimlar soni'] },
           'Jami obyektlar soni', 'Jami MFY soni', 'Yakunlangan MFY soni', 'Xatlov yakunlangan obyekt',
-          { title: 'shundan', children: ['bir kunda', 'Du–Ju', '1 xodimga kunlik'] },
+          { title: 'shundan', children: ['bir kunlik reja', 'bir kunda', weekOpen ? { title: 'Du–Ya', children: [...weekDays, 'Jami'] } : 'Du–Ya', '1 xodimga kunlik'] },
         ],
       },
       {
@@ -261,7 +307,7 @@ function ReportPage({ token }: { token: string; user: User }) {
           { title: 'farqi', children: ['foiz', 'qoldiq'] },
         ],
       },
-      { title: 'Muddat kechikishi', children: ['15-30 kungacha', '1 oydan ortiq'] },
+      { title: 'Muddat kechikishi', children: ['1-3 kun', '4-7 kun', '8-14 kun', '15-30 kungacha', '1 oydan ortiq'] },
       { title: 'MKD (jarayonda)', children: ['Jami', ...(mkdYears.length ? [{ title: 'shundan', children: mkdYears.map((year) => `${year}-yil`) }] : [])] },
       'To‘lov bo‘yicha qarzdorlik (mln so‘m)',
     ]
@@ -270,20 +316,23 @@ function ReportPage({ token }: { token: string; user: User }) {
       line.index === null ? `Bosh vakil — ${line.leader ?? ''}` : employeeText(line.republic),
       employeeText(line.regional),
       line.engineerCount, line.xatlovEmployeeCount, line.objectCount, line.mfyCount, line.completedMfyCount,
-      line.censusCount, line.dailyCompletedObjects, line.weeklyMigration, line.migrationPerEmployeeDay, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
-      line.overdue15to30, line.overdueOver30, line.mkdTotal, ...mkdYears.map((year) => mkdYearValue(line, year)), line.paymentDebt,
+      line.censusCount, line.dailyMigrationPlan, line.dailyCompletedObjects, ...(weekOpen ? line.weekMigration : []), line.weeklyMigration, line.migrationPerEmployeeDay, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
+      line.overdue1to3, line.overdue4to7, line.overdue8to14, line.overdue15to30, line.overdueOver30, line.mkdTotal, ...mkdYears.map((year) => mkdYearValue(line, year)), line.paymentDebt,
     ])
     const options = {
       title,
       totalRows: 1,
       highlight: (row: number, column: number) => {
         const key = lines[row].key
-        return (column === 12 && worstPerEmployee.has(key))
+        return (column === 13 + shift && worstPerEmployee.has(key))
           || (radColumns.includes(column) && worstRad.has(key))
-          || (column === 17 && worstOverdue15to30.has(key))
-          || (column === 18 && worstOverdueOver30.has(key))
+          || (column === 18 + shift && worstOverdue1to3.has(key))
+          || (column === 19 + shift && worstOverdue4to7.has(key))
+          || (column === 20 + shift && worstOverdue8to14.has(key))
+          || (column === 21 + shift && worstOverdue15to30.has(key))
+          || (column === 22 + shift && worstOverdueOver30.has(key))
           // MKD "Jami" and the year columns.
-          || (column >= 19 && column <= 19 + mkdYears.length && worstMkd.has(key))
+          || (column >= 23 + shift && column <= 23 + shift + mkdYears.length && worstMkd.has(key))
       },
     }
     const filename = `hisobot-${date.format('YYYY-MM-DD')}`

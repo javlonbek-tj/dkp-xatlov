@@ -24,11 +24,11 @@ const sumPeriods = (rows: Periods[]): Periods => {
   const add = (key: keyof Periods) => ({ count: rows.reduce((sum, row) => sum + row[key].count, 0), amount: rows.reduce((sum, row) => sum + row[key].amount, 0) })
   return { daily: add('daily'), weekly: add('weekly'), monthly: add('monthly') }
 }
-const periodHeaders: ExportHeader[] = (['Kunlik', 'Haftalik (Du–Ju)', 'Oy boshidan'] as const).map((title) => ({ title, children: ['Ariza soni', 'Summa (mln so‘m)'] }))
+const periodHeaders: ExportHeader[] = (['Kunlik', 'Haftalik (Du–Ya)', 'Oy boshidan'] as const).map((title) => ({ title, children: ['Ariza soni', 'Summa (mln so‘m)'] }))
 const periodValues = (row: Periods) => [row.daily.count, Number(row.daily.amount.toFixed(3)), row.weekly.count, Number(row.weekly.amount.toFixed(3)), row.monthly.count, Number(row.monthly.amount.toFixed(3))]
 
 function periodColumns<T extends Periods>(highlight?: (row: T) => boolean): ColumnsType<T> {
-  return ([['daily', 'Kunlik'], ['weekly', 'Haftalik (Du–Ju)'], ['monthly', 'Oy boshidan']] as const).map(([key, title]) => ({
+  return ([['daily', 'Kunlik'], ['weekly', 'Haftalik (Du–Ya)'], ['monthly', 'Oy boshidan']] as const).map(([key, title]) => ({
     title, children: [
       { title: 'Ariza soni', key: `${key}Count`, width: 85, align: 'center' as const, render: (_: unknown, row: T) => row[key].count.toLocaleString('ru-RU') },
       {

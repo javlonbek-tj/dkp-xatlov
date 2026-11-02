@@ -87,6 +87,8 @@ model District {
   xatlovEmployeeCount           Int?
   objectCount                   Int?
   mfyCount                      Int?
+  // Migrations the district must complete in one day, set on the districts tab.
+  dailyMigrationPlan            Int?
   republicEmployeeAssignmentId  String?
   regionalEmployeeAssignmentId  String?
   createdAt                     DateTime @default(now())

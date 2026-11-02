@@ -58,12 +58,10 @@ router.get('/', requireAuth, async (request, response, next) => {
       }),
     ]);
     const ids = districts.map((district) => district.id);
-    // Weekly migration covers Monday to Friday of the report date's week, up to the report date.
+    // Weekly migration covers Monday to Sunday of the report date's week, up to the report date.
     const weekStart = new Date(date);
     weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-    const friday = new Date(weekStart);
-    friday.setUTCDate(weekStart.getUTCDate() + 4);
-    const weekEnd = date < friday ? date : friday;
+    const weekEnd = date;
     const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 
     const [xatlovRecords, weeklyXatlov, radLimits, overdue, mkdRecords, mkdYears] = await Promise.all([
@@ -72,11 +70,9 @@ router.get('/', requireAuth, async (request, response, next) => {
         orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
         distinct: ['districtId'],
       }),
-      prisma.xatlovRecord.groupBy({
-        by: ['districtId'],
+      prisma.xatlovRecord.findMany({
         where: { districtId: { in: ids }, recordDate: { gte: weekStart, lte: weekEnd } },
-        _sum: { migrationCount: true },
-        _count: { _all: true },
+        select: { districtId: true, recordDate: true, migrationCount: true },
       }),
       // Latest month-to-date RAD snapshot in the report month, on or before the report date.
       prisma.radLimit.findMany({
@@ -100,7 +96,7 @@ router.get('/', requireAuth, async (request, response, next) => {
 
     const rows = districts.map((district) => {
       const xatlov = xatlovRecords.find((record) => record.districtId === district.id);
-      const weekly = weeklyXatlov.find((item) => item.districtId === district.id);
+      const weekly = weeklyXatlov.filter((record) => record.districtId === district.id);
       const rad = radLimits.find((limit) => limit.districtId === district.id);
       const stages = overdue.find((snapshot) => snapshot.districtId === district.id);
       return {
@@ -112,6 +108,7 @@ router.get('/', requireAuth, async (request, response, next) => {
         xatlovEmployeeCount: district.xatlovEmployeeCount,
         objectCount: district.objectCount,
         mfyCount: district.mfyCount,
+        dailyMigrationPlan: district.dailyMigrationPlan,
         xatlov: xatlov ? {
           recordDate: xatlov.recordDate.toISOString().slice(0, 10),
           completedMfyCount: xatlov.completedMfyCount,
@@ -120,10 +117,15 @@ router.get('/', requireAuth, async (request, response, next) => {
           migrationCount: xatlov.migrationCount,
           paymentDebt: xatlov.paymentDebt === null ? null : xatlov.paymentDebt.toNumber(),
         } : null,
-        weeklyMigrationCount: weekly?._sum.migrationCount ?? null,
+        weeklyMigrationCount: weekly.length ? weekly.reduce((sum, record) => sum + record.migrationCount, 0) : null,
         // Days worked this week = days with a saved record from Monday on.
-        weeklyDays: weekly?._count._all ?? 0,
+        weeklyDays: weekly.length,
+        // Migration on each day of the week, Monday first; null for a day without a record.
+        weekMigration: Array.from({ length: 7 }, (_, day) => weekly.find((record) => (record.recordDate.getUTCDay() + 6) % 7 === day)?.migrationCount ?? null),
         rad: rad ? { monthlyLimit: rad.monthlyLimit, rejectedApplications: rad.rejectedApplications } : null,
+        overdue1to3: stages?.stage1to3 ?? 0,
+        overdue4to7: stages?.stage4to7 ?? 0,
+        overdue8to14: stages?.stage8to14 ?? 0,
         overdue15to30: stages?.stage15to30 ?? 0,
         overdueOver30: (stages?.stage31to90 ?? 0) + (stages?.stage90plus ?? 0),
         mkdInProgress: Object.fromEntries(mkdRecords.filter((record) => record.districtId === district.id).map((record) => [record.year, record.inProgressCount])),

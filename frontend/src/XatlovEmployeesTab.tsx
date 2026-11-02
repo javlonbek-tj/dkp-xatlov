@@ -16,7 +16,7 @@ type Employee = {
   id: string; districtId: string; fullName: string; position: string | null; phone: string | null; note: string | null
   district: { id: string; name: string; region: { id: string; name: string } }
   record: WorkRecord | null
-  // Monday to Friday of the selected date's week, up to that date.
+  // Monday to Sunday of the selected date's week, up to that date.
   weeklyCensusCount: number; weeklyMigrationCount: number
 }
 type ApiData = { districts: District[]; employees: Employee[]; canManage: boolean }
@@ -94,12 +94,10 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     if (!workEditor) return
     const base = `/districts/${workEditor.districtId}/employees/${workEditor.id}/records`
     const recordDate = filters.date.format('YYYY-MM-DD')
-    // Saturday and Sunday records are not part of the Monday–Friday totals.
-    const inWeek = filters.date.day() >= 1 && filters.date.day() <= 5
-    const weekly = (item: Employee) => inWeek ? {
+    const weekly = (item: Employee) => ({
       weeklyCensusCount: item.weeklyCensusCount + values.censusCount - (item.record?.censusCount ?? 0),
       weeklyMigrationCount: item.weeklyMigrationCount + values.migrationCount - (item.record?.migrationCount ?? 0),
-    } : {}
+    })
     change.mutate({
       path: workEditor.record ? `${base}/${workEditor.record.id}` : base,
       method: workEditor.record ? 'PATCH' : 'POST',
@@ -162,7 +160,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
     const headers: ExportHeader[] = [
       'Hudud', 'Tuman', 'F.I.Sh.', 'Lavozim', 'Telefon', 'Izoh',
       { title: 'Kunlik', children: ['Xatlov soni', 'Migratsiya soni'] },
-      { title: 'Haftalik (Du–Ju)', children: ['Xatlov soni', 'Migratsiya soni'] },
+      { title: 'Haftalik (Du–Ya)', children: ['Xatlov soni', 'Migratsiya soni'] },
     ]
     const rows = [
       ['Jami', '', `${visible.length} ta xodim (${totals.entered} ta kiritilgan)`, '', '', '', totals.census, totals.migration, totals.weeklyCensus, totals.weeklyMigration],
@@ -189,7 +187,7 @@ function XatlovEmployeesTab({ token, user }: { token: string; user: User }) {
       { title: 'Xatlov soni', key: 'censusCount', width: 110, align: 'center', render: (_, row) => row.record ? row.record.censusCount.toLocaleString('ru-RU') : '—' },
       { title: 'Migratsiya soni', key: 'migrationCount', width: 130, align: 'center', render: (_, row) => row.record ? <Tag color="blue" className="!m-0 min-w-10 text-center !font-semibold">{row.record.migrationCount.toLocaleString('ru-RU')}</Tag> : '—' },
     ] },
-    { title: 'Haftalik (Du–Ju)', children: [
+    { title: 'Haftalik (Du–Ya)', children: [
       { title: 'Xatlov soni', key: 'weeklyCensusCount', width: 110, align: 'center', render: (_, row) => row.weeklyCensusCount.toLocaleString('ru-RU') },
       { title: 'Migratsiya soni', key: 'weeklyMigrationCount', width: 130, align: 'center', onCell: (row) => lowest.has(row.id) ? { className: '!bg-red-50 font-semibold text-red-600' } : {}, render: (_, row) => row.weeklyMigrationCount.toLocaleString('ru-RU') },
     ] },

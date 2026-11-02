@@ -75,7 +75,7 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
     </div>
     {shownError && <Alert type="error" showIcon message={shownError} />}
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      {([['Tanlangan kun', data?.totals.daily], ['Hafta (Du–Ju)', data?.totals.weekly], ['Oy boshidan', data?.totals.monthly]] as const).map(([label, totals]) => <Card key={label} size="small" loading={query.isPending}>
+      {([['Tanlangan kun', data?.totals.daily], ['Hafta (Du–Ya)', data?.totals.weekly], ['Oy boshidan', data?.totals.monthly]] as const).map(([label, totals]) => <Card key={label} size="small" loading={query.isPending}>
         <Typography.Text type="secondary">{label}</Typography.Text>
         <div className="mt-1 grid grid-cols-2 gap-2">
           <Statistic title="Arizalar" value={totals?.count ?? 0} />
