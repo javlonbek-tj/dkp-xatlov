@@ -501,3 +501,9 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - `GET /applications` is open to payment specialists, limited to their district.
 - The "Arizalar" tab has a district filter (shown when the list has more than one district), besides the page's region/district filters.
 - Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`, and a local read-only call as `a.yandusov` (169 applications of G‘ozg‘on shahar, plan debt 450.53 mln); not checked in a browser.
+
+## Payment collection - "Reja" tab for specialists
+
+- The plan table of the "Reja" tab is now a shared `PaymentPlanTable` (plan helpers `dailyPlan`, `weeklyPlan`, `percentOf` moved to `payments.ts`); the totals row is shown when there is more than one district.
+- Payment specialists have a "Reja" tab with the same table for their own district (with a date picker), replacing the plan card on the entry tab.
+- Verified with frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

@@ -21,6 +21,11 @@ export const toSom = (mln: number | string) => Math.round(Number(mln) * 1_000_00
 export const toMln = (som: number) => som / 1_000_000
 export const formatSom = (mln: number | string) => toSom(mln).toLocaleString('ru-RU')
 export const formatWholeSom = (som: number) => som.toLocaleString('ru-RU')
+// Debt to collect each working day so that it is finished by the deadline; a week is 5 working days.
+export const dailyPlan = (debt: number | null, workDays?: number) => debt !== null && workDays ? debt / workDays : null
+export const weeklyPlan = (debt: number | null, workDays?: number) => { const plan = dailyPlan(debt, workDays); return plan === null ? null : plan * 5 }
+// Share of the plan collected, in percent with one decimal.
+export const percentOf = (collected: number, plan: number | null) => plan ? Math.round((collected / plan) * 1000) / 10 : null
 // A payment of this many million so'm or more is saved only after a confirmation.
 const largeAmount = 50
 

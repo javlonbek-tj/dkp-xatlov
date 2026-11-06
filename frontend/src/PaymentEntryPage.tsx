@@ -6,13 +6,14 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { apiFetch } from './api'
 import PaymentAmountField from './PaymentAmountField'
 import PaymentApplicationsTab from './PaymentApplicationsTab'
+import PaymentPlanTable from './PaymentPlanTable'
 import { formatAmount, formatSom, formatWholeSom, savePayment, statusLabels, toMln, toSom, type ApplicationDetails, type PaymentRecord } from './payments'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
 type Totals = { count: number; amount: number }
 type ApiData = {
-  specialist: { fullName: string; position: string | null; district: { name: string; region: { name: string } } | null } | null
+  specialist: { fullName: string; position: string | null; district: { id: string; name: string; region: { name: string } } | null } | null
   records: PaymentRecord[]
   totals: { daily: Totals; weekly: Totals; monthly: Totals }
   // The district's plan: applications' debt in million so'm, working days to the deadline and what the district collected.
@@ -91,25 +92,10 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
   const amountField = <PaymentAmountField className="!w-48" />
   const numberField = <Form.Item label="Ariza raqami" name="applicationNumber" rules={[{ required: true, whitespace: true, message: 'Ariza raqamini kiriting' }]}><Input maxLength={50} className="!w-56" placeholder="Ariza raqami" /></Form.Item>
 
-  // Daily plan = debt / working days; weekly plan = 5 daily plans, as on the "Reja" tab.
+  // The district's plan, shown like a row of the "Reja" tab.
   const plan = data?.plan
-  const dailyPlan = plan?.workDays ? plan.debt / plan.workDays : null
-  const planCard = plan && <Card size="small" title={`${data?.specialist?.district?.name ?? 'Tuman'} rejasi (${dayjs(plan.deadline).format('DD.MM.YYYY')} gacha)`}
-    extra={<Typography.Text type="secondary">Arizalar qarzi: {formatAmount(plan.debt)} mln so‘m · {plan.workDays} ish kuni</Typography.Text>}>
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {([['Kunlik', dailyPlan, plan.district.daily.amount], ['Haftalik (Du–Ya)', dailyPlan === null ? null : dailyPlan * 5, plan.district.weekly.amount]] as const).map(([label, target, collected]) => {
-        const percent = target ? Math.round((collected / target) * 1000) / 10 : null
-        return <div key={label}>
-          <Typography.Text type="secondary">{label}</Typography.Text>
-          <div className="mt-1 grid grid-cols-3 gap-2">
-            <Statistic title="Reja (mln)" value={target === null ? '—' : formatAmount(target)} />
-            <Statistic title="Undirilgan (mln)" value={formatAmount(collected)} />
-            <Statistic title="Bajarilishi" value={percent === null ? '—' : `${percent.toLocaleString('ru-RU')}%`} valueStyle={{ color: percent === null ? undefined : percent < 100 ? '#dc2626' : '#15803d' }} />
-          </div>
-        </div>
-      })}
-    </div>
-  </Card>
+  const district = data?.specialist?.district
+  const planRows = plan && district ? [{ id: district.id, name: district.name, region: district.region, paymentDebt: plan.debt, daily: plan.district.daily, weekly: plan.district.weekly }] : []
 
   return <Space direction="vertical" size="middle" className="w-full">
     <div>
@@ -118,7 +104,6 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
     </div>
     {shownError && <Alert type="error" showIcon message={shownError} />}
     <Tabs items={[{ key: 'entry', label: 'To‘lov kiritish', children: <Space direction="vertical" size="middle" className="w-full">
-    {planCard}
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       {([['Mening to‘lovlarim · kun', data?.totals.daily], ['Mening to‘lovlarim · hafta (Du–Ya)', data?.totals.weekly], ['Mening to‘lovlarim · oy boshidan', data?.totals.monthly]] as const).map(([label, totals]) => <Card key={label} size="small" loading={query.isPending}>
         <Typography.Text type="secondary">{label}</Typography.Text>
@@ -156,7 +141,15 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
         </Table.Summary.Row> : null} />
       <Typography.Text type="secondary" className="text-xs">Faqat bugun kiritilgan yozuvlarni tahrirlash yoki o‘chirish mumkin.</Typography.Text>
     </Card>
-    </Space> }, { key: 'applications', label: 'Arizalar', children: <Card size="small"><PaymentApplicationsTab token={token} /></Card> }]} />
+    </Space> }, {
+      key: 'plan', label: 'Reja', children: <Card size="small" loading={query.isPending}>
+        <Space wrap className="mb-4">
+          <DatePicker allowClear={false} value={date} disabledDate={(day) => day.isAfter(dayjs(), 'day')} onChange={(value) => value && setDate(value)} />
+          <Typography.Text type="secondary">Kunlik va haftalik undirilgan — tumanning barcha mutaxassislari kiritgan to‘lovlar.</Typography.Text>
+        </Space>
+        <PaymentPlanTable rows={planRows} workDays={plan?.workDays} deadline={plan?.deadline} />
+      </Card>,
+    }, { key: 'applications', label: 'Arizalar', children: <Card size="small"><PaymentApplicationsTab token={token} /></Card> }]} />
     <Modal title="To‘lovni tahrirlash" open={!!editing} onCancel={() => setEditing(null)} onOk={() => editForm.submit()} confirmLoading={saving} destroyOnHidden>
       <Form form={editForm} layout="vertical" onFinish={update}>{numberField}{amountField}</Form>
     </Modal>
