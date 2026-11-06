@@ -15,7 +15,7 @@ type Periods = { daily: Totals; weekly: Totals; monthly: Totals }
 type District = { id: string; name: string; regionId: string; region: { id: string; name: string } }
 type Specialist = Periods & { id: string; fullName: string; phone: string | null; position: string | null; district: District | null }
 type DistrictTotal = Periods & District & { specialistCount: number; paymentDebt: number | null; paymentDebtDate: string | null }
-type ApiData = { districts: District[]; specialists: Specialist[]; districtTotals: DistrictTotal[]; plan: { deadline: string; workDays: number; weekWorkDays: number }; canEdit: boolean }
+type ApiData = { districts: District[]; specialists: Specialist[]; districtTotals: DistrictTotal[]; plan: { baseDate: string; deadline: string; workDays: number }; canEdit: boolean }
 type Values = { applicationNumber: string; amount: number }
 
 // The three specialists with the smallest weekly sum are shown in red.
@@ -96,11 +96,11 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
   const districtSum = sumPeriods(districtTotals)
   const workDays = data?.plan.workDays
   const deadlineText = data ? dayjs(data.plan.deadline).format('DD.MM.YYYY') : ''
+  const baseDateText = data ? dayjs(data.plan.baseDate).format('DD.MM.YYYY') : ''
   const debtSum = districtTotals.reduce((sum, row) => sum + (row.paymentDebt ?? 0), 0)
   const planSum = dailyPlan(debtSum, workDays)
-  // Weekly plan = daily plan × working days from Monday up to the selected date.
-  const weekWorkDays = data?.plan.weekWorkDays ?? 0
-  const weeklyPlan = (debt: number | null) => { const plan = dailyPlan(debt, workDays); return plan === null || !weekWorkDays ? null : plan * weekWorkDays }
+  // Weekly plan = daily plan × 5 working days.
+  const weeklyPlan = (debt: number | null) => { const plan = dailyPlan(debt, workDays); return plan === null ? null : plan * 5 }
   const round = (value: number | null) => value === null ? null : Number(value.toFixed(3))
   // Plan, collected sum and percent for the day and for the week.
   const planValues = (debt: number | null, row: Periods) => [
@@ -127,7 +127,7 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
       lines: [`${place} bo‘yicha ${subject} to‘g‘risida`, 'MA’LUMOT'],
       note: `${filters.date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
     }
-    const headers: ExportHeader[] = bySpecialists ? ['Hudud', 'Tuman', 'F.I.Sh.', 'Lavozimi', 'Telefon', ...periodHeaders] : tab === 'plan' ? ['Hudud', 'Tuman', 'Qoldiq (mln so‘m)', `${deadlineText} gacha ish kunlari`, ...(['Kunlik', `Haftalik (Du–Ya, ${weekWorkDays} ish kuni)`].map((title) => ({ title, children: ['Reja (mln so‘m)', 'Undirilgan (mln so‘m)', 'Bajarilishi (%)'] })))] : ['Hudud', 'Tuman', 'Mutaxassislar', ...periodHeaders]
+    const headers: ExportHeader[] = bySpecialists ? ['Hudud', 'Tuman', 'F.I.Sh.', 'Lavozimi', 'Telefon', ...periodHeaders] : tab === 'plan' ? ['Hudud', 'Tuman', `${baseDateText} holatiga qoldiq (mln so‘m)`, `${baseDateText}–${deadlineText} ish kunlari`, ...(['Kunlik', 'Haftalik (Du–Ya)'].map((title) => ({ title, children: ['Reja (mln so‘m)', 'Undirilgan (mln so‘m)', 'Bajarilishi (%)'] })))] : ['Hudud', 'Tuman', 'Mutaxassislar', ...periodHeaders]
     const rows = bySpecialists
       ? [['Jami', '', `${specialists.length} ta mutaxassis`, '', '', ...periodValues(specialistTotals)],
         ...specialists.map((row) => [row.district?.region.name, row.district?.name, row.fullName, row.position, row.phone, ...periodValues(row)])]
@@ -159,11 +159,11 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
   const planColumns: ColumnsType<DistrictTotal> = [
     { title: 'Tuman', key: 'district', width: 180, render: (_, row) => <div className="truncate leading-tight"><span className="font-medium">{row.name}</span><div className="text-xs text-slate-500">{row.region.name}</div></div> },
     {
-      title: <span className="leading-tight">Qoldiq<br />(mln so‘m)</span>, key: 'paymentDebt', width: 120, align: 'right',
-      render: (_, row) => <div className="leading-tight">{amountOrDash(row.paymentDebt)}{row.paymentDebtDate && row.paymentDebtDate.slice(0, 10) !== dateText && <div className="text-xs text-slate-500">{dayjs(row.paymentDebtDate.slice(0, 10)).format('DD.MM.YYYY')}</div>}</div>,
+      title: <span className="leading-tight">{baseDateText} holatiga<br />qoldiq (mln so‘m)</span>, key: 'paymentDebt', width: 120, align: 'right',
+      render: (_, row) => <div className="leading-tight">{amountOrDash(row.paymentDebt)}{row.paymentDebtDate && row.paymentDebtDate.slice(0, 10) !== data?.plan.baseDate && <div className="text-xs text-slate-500">{dayjs(row.paymentDebtDate.slice(0, 10)).format('DD.MM.YYYY')}</div>}</div>,
     },
     { title: <span className="leading-tight">{deadlineText} gacha<br />ish kunlari</span>, key: 'workDays', width: 120, align: 'center', render: () => workDays ?? '—' },
-    ...([['daily', 'Kunlik'], ['weekly', `Haftalik (Du–Ya, ${weekWorkDays} ish kuni)`]] as const).map(([key, title]) => {
+    ...([['daily', 'Kunlik'], ['weekly', 'Haftalik (Du–Ya)']] as const).map(([key, title]) => {
       const plan = (row: DistrictTotal) => key === 'daily' ? dailyPlan(row.paymentDebt, workDays) : weeklyPlan(row.paymentDebt)
       return {
         title, children: [

@@ -114,6 +114,11 @@ function mapDatabaseError(error: unknown, next: NextFunction): void {
 }
 
 // Monday of the date's week up to the date, as on the Xatlov page; and the month up to the date.
+// The plan is fixed on the debt of this date (the 4 900 mln entered on 05.11.2026); it must be collected from the next day to 31 December.
+const planBaseDate = '2026-11-05';
+const planDeadline = `${planBaseDate.slice(0, 4)}-12-31`;
+const planBase = new Date(`${planBaseDate}T00:00:00.000Z`);
+
 function periods(date: Date) {
   const weekStart = new Date(date);
   weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
@@ -224,22 +229,17 @@ router.get('/', readers, async (request, response, next) => {
         where: { district: locationFilter, recordDate: { gte: monthStart, lte: date } },
         select: { userId: true, districtId: true, recordDate: true, amount: true },
       }),
-      // Each district's payment debt left to collect, from its latest Xatlov record up to the date.
+      // Each district's payment debt on the plan's base date (latest Xatlov record up to it); later changes do not move the plan.
       prisma.xatlovRecord.findMany({
-        where: { district: locationFilter, recordDate: { lte: date }, paymentDebt: { not: null } },
+        where: { district: locationFilter, recordDate: { lte: planBase }, paymentDebt: { not: null } },
         distinct: ['districtId'],
         orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
         select: { districtId: true, recordDate: true, paymentDebt: true },
       }),
     ]);
     const debtByDistrict = new Map(debts.map((item) => [item.districtId, { paymentDebt: item.paymentDebt!.toNumber(), paymentDebtDate: item.recordDate }]));
-    // The debt must be collected by 31 December of the selected year, in a 5-day week without holidays.
-    const deadline = `${date.getUTCFullYear()}-12-31`;
-    const workDaysLeft = workDays(date, 5, deadline);
-    // Working days from Monday of the date's week up to the date, for the weekly plan.
-    const dayBeforeWeek = new Date(periods(date).weekStart);
-    dayBeforeWeek.setUTCDate(dayBeforeWeek.getUTCDate() - 1);
-    const weekWorkDays = workDays(dayBeforeWeek, 5, date.toISOString().slice(0, 10));
+    // Working days of the plan, after the base date up to the deadline, in a 5-day week without holidays.
+    const planWorkDays = workDays(planBase, 5, planDeadline);
     const bySpecialist = summarize(records, date, (record) => record.userId);
     const byDistrict = summarize(records, date, (record) => record.districtId);
     const specialistCount = new Map<string, number>();
@@ -257,7 +257,7 @@ router.get('/', readers, async (request, response, next) => {
           ...(byDistrict.get(district.id) ?? emptyTotals()),
           ...(debtByDistrict.get(district.id) ?? { paymentDebt: null, paymentDebtDate: null }),
         })),
-      plan: { deadline, workDays: workDaysLeft, weekWorkDays },
+      plan: { baseDate: planBaseDate, deadline: planDeadline, workDays: planWorkDays },
       canEdit: user.role === UserRole.ADMIN,
     });
   } catch (error) { next(error); }
