@@ -20,6 +20,8 @@ import { paymentsRouter } from './payments.js';
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
 
+// The applications file can be larger than the default body limit.
+app.use('/api/payments/applications/import', express.json({ limit: '5mb' }));
 app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);

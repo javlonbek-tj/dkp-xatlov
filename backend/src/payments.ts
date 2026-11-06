@@ -64,20 +64,47 @@ function parsePayment(body: unknown) {
   }
   return {
     recordDate,
-    applicationNumber: text(input.applicationNumber, 'Application number', 50),
+    applicationNumber: applicationNumber(input.applicationNumber),
     amount: new Prisma.Decimal(amount.toFixed(6)),
   };
 }
 
-// The same application number entered again is refused unless the user confirms it (e.g. a payment in instalments).
-async function checkDuplicate(body: unknown, applicationNumber: string, exceptId?: string) {
-  if ((body as Record<string, unknown> | undefined)?.allowDuplicate === true) return;
-  const existing = await prisma.paymentRecord.findFirst({
-    where: { applicationNumber, ...(exceptId ? { id: { not: exceptId } } : {}) },
-    select: { recordDate: true, user: { select: { fullName: true } } },
-  });
-  if (existing) {
-    throw new ApiError(409, 'DUPLICATE_APPLICATION', `Bu ariza raqami ${existing.recordDate.toISOString().slice(0, 10).split('-').reverse().join('.')} kuni ${existing.user.fullName} tomonidan kiritilgan`);
+// Application numbers are kept in upper case without spaces.
+function applicationNumber(value: unknown): string {
+  return text(value, 'Application number', 50).replace(/\s+/g, '').toUpperCase();
+}
+
+// Amounts of applications are compared in whole so'm.
+const toSom = (mln: Prisma.Decimal | number) => Math.round(Number(mln) * 1_000_000);
+const formatSom = (som: number) => som.toLocaleString('ru-RU');
+const formatDate = (date: Date) => date.toISOString().slice(0, 10).split('-').reverse().join('.');
+
+// Debt, collected sum and what is left of an application, in so'm.
+function applicationState(debtMln: Prisma.Decimal, paidMln: Prisma.Decimal | null) {
+  const debt = toSom(debtMln);
+  const paid = toSom(paidMln ?? 0);
+  const remaining = Math.max(debt - paid, 0);
+  return { debt, paid, remaining, status: remaining === 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'UNPAID' };
+}
+
+// A payment must belong to a known application of the payment's district and may not exceed what is left of it.
+// The application row is locked so that two payments at the same time cannot both use the same remainder.
+async function checkApplication(db: Prisma.TransactionClient, number: string, districtId: string, amount: Prisma.Decimal, exceptRecordId?: string) {
+  await db.$queryRaw`SELECT "id" FROM "PaymentApplication" WHERE "number" = ${number} FOR UPDATE`;
+  const application = await db.paymentApplication.findUnique({ where: { number } });
+  if (!application) throw new ApiError(404, 'APPLICATION_NOT_FOUND', 'Ariza topilmadi');
+  if (application.districtId !== districtId) throw new ApiError(403, 'APPLICATION_OTHER_DISTRICT', 'Bu ariza sizning tumaningizga tegishli emas');
+  const others = { applicationNumber: number, ...(exceptRecordId ? { id: { not: exceptRecordId } } : {}) };
+  const paid = await db.paymentRecord.aggregate({ where: others, _sum: { amount: true } });
+  const state = applicationState(application.debt, paid._sum.amount);
+  if (state.remaining === 0) {
+    const last = await db.paymentRecord.findFirst({ where: others, orderBy: [{ recordDate: 'desc' }, { createdAt: 'desc' }], select: { recordDate: true, user: { select: { fullName: true } } } });
+    throw new ApiError(409, 'APPLICATION_PAID', last
+      ? `Bu ariza bo‘yicha to‘lov to‘liq undirilgan (oxirgi to‘lov ${formatDate(last.recordDate)}, ${last.user.fullName})`
+      : 'Bu ariza bo‘yicha qarzdorlik yo‘q (to‘liq undirilgan)');
+  }
+  if (toSom(amount) > state.remaining) {
+    throw new ApiError(400, 'AMOUNT_EXCEEDS_REMAINING', `Summa ariza qoldig‘idan oshmasligi kerak. Qoldiq: ${formatSom(state.remaining)} so‘m`);
   }
 }
 
@@ -113,12 +140,12 @@ function mapDatabaseError(error: unknown, next: NextFunction): void {
   next(error);
 }
 
-// Monday of the date's week up to the date, as on the Xatlov page; and the month up to the date.
-// The plan is fixed on the debt of this date (the 4 900 mln entered on 05.11.2026); it must be collected from the next day to 31 December.
+// The plan to collect the applications' debt starts the day after this date and ends on 31 December.
 const planBaseDate = '2026-11-05';
 const planDeadline = `${planBaseDate.slice(0, 4)}-12-31`;
 const planBase = new Date(`${planBaseDate}T00:00:00.000Z`);
 
+// Monday of the date's week up to the date, as on the Xatlov page; and the month up to the date.
 function periods(date: Date) {
   const weekStart = new Date(date);
   weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
@@ -169,9 +196,12 @@ router.post('/records', requireRole(UserRole.PAYMENT_SPECIALIST), async (request
   try {
     const user = await prisma.user.findUnique({ where: { id: request.auth!.id }, select: { id: true, districtId: true } });
     if (!user?.districtId) throw new ApiError(400, 'NO_DISTRICT', 'The specialist is not linked to a district');
+    const districtId = user.districtId;
     const payment = parsePayment(request.body);
-    await checkDuplicate(request.body, payment.applicationNumber);
-    const record = await prisma.paymentRecord.create({ data: { ...payment, userId: user.id, districtId: user.districtId } });
+    const record = await prisma.$transaction(async (transaction) => {
+      await checkApplication(transaction, payment.applicationNumber, districtId, payment.amount);
+      return transaction.paymentRecord.create({ data: { ...payment, userId: user.id, districtId } });
+    });
     response.status(201).json({ record });
   } catch (error) { next(error); }
 });
@@ -180,8 +210,10 @@ router.patch('/records/:recordId', requireRole(UserRole.PAYMENT_SPECIALIST, User
   try {
     const existing = await requireEditableRecord(request);
     const payment = parsePayment(request.body);
-    await checkDuplicate(request.body, payment.applicationNumber, existing.id);
-    const record = await prisma.paymentRecord.update({ where: { id: existing.id }, data: payment });
+    const record = await prisma.$transaction(async (transaction) => {
+      await checkApplication(transaction, payment.applicationNumber, existing.districtId, payment.amount, existing.id);
+      return transaction.paymentRecord.update({ where: { id: existing.id }, data: payment });
+    });
     response.json({ record });
   } catch (error) { next(error); }
 });
@@ -229,15 +261,10 @@ router.get('/', readers, async (request, response, next) => {
         where: { district: locationFilter, recordDate: { gte: monthStart, lte: date } },
         select: { userId: true, districtId: true, recordDate: true, amount: true },
       }),
-      // Each district's payment debt on the plan's base date (latest Xatlov record up to it); later changes do not move the plan.
-      prisma.xatlovRecord.findMany({
-        where: { district: locationFilter, recordDate: { lte: planBase }, paymentDebt: { not: null } },
-        distinct: ['districtId'],
-        orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
-        select: { districtId: true, recordDate: true, paymentDebt: true },
-      }),
+      // The plan of each district is the debt of its applications at import; payments do not change it.
+      prisma.paymentApplication.groupBy({ by: ['districtId'], where: { district: locationFilter }, _sum: { debt: true } }),
     ]);
-    const debtByDistrict = new Map(debts.map((item) => [item.districtId, { paymentDebt: item.paymentDebt!.toNumber(), paymentDebtDate: item.recordDate }]));
+    const debtByDistrict = new Map(debts.map((item) => [item.districtId, item._sum.debt?.toNumber() ?? 0]));
     // Working days of the plan, after the base date up to the deadline, in a 5-day week without holidays.
     const planWorkDays = workDays(planBase, 5, planDeadline);
     const bySpecialist = summarize(records, date, (record) => record.userId);
@@ -255,7 +282,7 @@ router.get('/', readers, async (request, response, next) => {
           ...district,
           specialistCount: specialistCount.get(district.id) ?? 0,
           ...(byDistrict.get(district.id) ?? emptyTotals()),
-          ...(debtByDistrict.get(district.id) ?? { paymentDebt: null, paymentDebtDate: null }),
+          paymentDebt: debtByDistrict.get(district.id) ?? null,
         })),
       plan: { baseDate: planBaseDate, deadline: planDeadline, workDays: planWorkDays },
       canEdit: user.role === UserRole.ADMIN,
@@ -274,6 +301,96 @@ router.get('/specialists/:userId/records', readers, async (request, response, ne
     if (!specialist) throw new ApiError(404, 'USER_NOT_FOUND', 'Payment specialist not found');
     const records = await prisma.paymentRecord.findMany({ where: { userId: specialist.id, recordDate: date }, orderBy: { createdAt: 'asc' } });
     response.json({ records });
+  } catch (error) { next(error); }
+});
+
+// ---- Applications with a payment debt ----
+
+const applicationSelect = {
+  number: true, debt: true,
+  district: { select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } } },
+} satisfies Prisma.PaymentApplicationSelect;
+
+// Every application in the report scope with its collected sum and status.
+router.get('/applications', readers, async (request, response, next) => {
+  try {
+    const regionId = request.query.regionId;
+    const districtId = request.query.districtId;
+    if ([regionId, districtId].some((value) => value !== undefined && typeof value !== 'string')) {
+      throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
+    }
+    const district: Prisma.DistrictWhereInput = {
+      ...reportDistrictScope(request.auth!),
+      ...(regionId ? { regionId: regionId as string } : {}),
+      ...(districtId ? { id: districtId as string } : {}),
+    };
+    const [applications, paid] = await Promise.all([
+      prisma.paymentApplication.findMany({ where: { district }, orderBy: [{ district: { name: 'asc' } }, { number: 'asc' }], select: applicationSelect }),
+      prisma.paymentRecord.groupBy({ by: ['applicationNumber'], where: { district }, _sum: { amount: true } }),
+    ]);
+    const paidByNumber = new Map(paid.map((item) => [item.applicationNumber, item._sum.amount]));
+    response.json({
+      applications: applications.map(({ debt, ...item }) => ({ ...item, ...applicationState(debt, paidByNumber.get(item.number) ?? null) })),
+      canImport: request.auth!.role === UserRole.ADMIN,
+    });
+  } catch (error) { next(error); }
+});
+
+// One application, looked up while a payment is entered; specialists see only their district's applications.
+router.get('/applications/:number', requireRole(UserRole.PAYMENT_SPECIALIST, UserRole.ADMIN), async (request, response, next) => {
+  try {
+    const user = request.auth!;
+    const number = applicationNumber(request.params.number);
+    const application = await prisma.paymentApplication.findUnique({ where: { number }, select: applicationSelect });
+    if (!application) throw new ApiError(404, 'APPLICATION_NOT_FOUND', 'Ariza topilmadi');
+    if (user.role === UserRole.PAYMENT_SPECIALIST) {
+      const specialist = await prisma.user.findUnique({ where: { id: user.id }, select: { districtId: true } });
+      if (application.district.id !== specialist?.districtId) throw new ApiError(403, 'APPLICATION_OTHER_DISTRICT', 'Bu ariza sizning tumaningizga tegishli emas');
+    }
+    const [paid, last] = await Promise.all([
+      prisma.paymentRecord.aggregate({ where: { applicationNumber: number }, _sum: { amount: true } }),
+      prisma.paymentRecord.findFirst({ where: { applicationNumber: number }, orderBy: [{ recordDate: 'desc' }, { createdAt: 'desc' }], select: { recordDate: true, user: { select: { fullName: true } } } }),
+    ]);
+    const { debt, ...item } = application;
+    response.json({ application: { ...item, ...applicationState(debt, paid._sum.amount), lastPayment: last && { recordDate: last.recordDate, fullName: last.user.fullName } } });
+  } catch (error) { next(error); }
+});
+
+// District names of the file ("G'ozg'on shahar filiali") compared with the saved ones ("G‘ozg‘on shahar").
+const normalizeName = (value: string) => value.toLowerCase().replace(/[‘’ʻʼ`´]/g, "'").replace(/\bfiliali\b/g, '').replace(/\s+/g, ' ').trim();
+
+// Adds applications from an Excel file (district, number, debt in so'm). Numbers already saved are left unchanged.
+// Nothing is saved when a row is invalid, so the file can be corrected and loaded again.
+router.post('/applications/import', adminOnly, async (request, response, next) => {
+  try {
+    const rows = (request.body as { rows?: unknown } | undefined)?.rows;
+    if (!Array.isArray(rows) || rows.length === 0 || rows.length > 20_000) throw new ApiError(400, 'INVALID_ROWS', 'Faylda 1 tadan 20 000 tagacha ariza bo‘lishi kerak');
+    const districts = await prisma.district.findMany({ select: { id: true, name: true } });
+    // A name used in two regions is ambiguous and is not matched.
+    const byName = new Map<string, string | null>();
+    for (const district of districts) {
+      const name = normalizeName(district.name);
+      byName.set(name, byName.has(name) ? null : district.id);
+    }
+    const errors: string[] = [];
+    const seen = new Set<string>();
+    const data: { number: string; districtId: string; debt: Prisma.Decimal }[] = [];
+    rows.forEach((row, index) => {
+      const input = (row ?? {}) as Record<string, unknown>;
+      const line = `${index + 2}-qator`;
+      const number = typeof input.number === 'string' || typeof input.number === 'number' ? String(input.number).replace(/\s+/g, '').toUpperCase() : '';
+      const districtId = typeof input.district === 'string' ? byName.get(normalizeName(input.district)) : undefined;
+      const debt = typeof input.debt === 'number' && Number.isFinite(input.debt) && input.debt >= 0 && input.debt < 1e17 ? input.debt : null;
+      if (!number || number.length > 50) errors.push(`${line}: ariza raqami noto‘g‘ri`);
+      else if (seen.has(number)) errors.push(`${line}: ${number} raqami faylda takrorlangan`);
+      if (!districtId) errors.push(`${line}: "${String(input.district ?? '')}" tumani topilmadi`);
+      if (debt === null) errors.push(`${line}: qoldiq summasi noto‘g‘ri`);
+      seen.add(number);
+      if (number && districtId && debt !== null) data.push({ number, districtId, debt: new Prisma.Decimal((Math.round(debt) / 1_000_000).toFixed(6)) });
+    });
+    if (errors.length) throw new ApiError(400, 'INVALID_ROWS', `Fayldagi xatolar (${errors.length} ta): ${errors.slice(0, 10).join('; ')}${errors.length > 10 ? '; …' : ''}`);
+    const result = await prisma.paymentApplication.createMany({ data, skipDuplicates: true });
+    response.json({ added: result.count, skipped: data.length - result.count });
   } catch (error) { next(error); }
 });
 

@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Space, Statistic, Table, Typography } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Space, Statistic, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { apiFetch } from './api'
 import PaymentAmountField from './PaymentAmountField'
-import { formatAmount, formatSom, savePayment, toMln, toSom, type PaymentRecord } from './payments'
+import { formatAmount, formatSom, formatWholeSom, savePayment, statusLabels, toMln, toSom, type ApplicationDetails, type PaymentRecord } from './payments'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -36,12 +36,31 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
   // Only records entered today can be changed.
   const editable = (record: PaymentRecord) => !!data && record.createdAt >= data.editableFrom
 
+  // The typed application number is looked up shortly after typing stops; its remainder fills the amount.
+  const typedNumber = Form.useWatch('applicationNumber', form) as string | undefined
+  const [lookupNumber, setLookupNumber] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setLookupNumber((typedNumber ?? '').replace(/\s+/g, '').toUpperCase()), 400)
+    return () => clearTimeout(timer)
+  }, [typedNumber])
+  const lookup = useQuery({
+    queryKey: ['payment-application', token, lookupNumber],
+    queryFn: () => apiFetch<{ application: ApplicationDetails }>(token, `/api/payments/applications/${encodeURIComponent(lookupNumber)}`),
+    enabled: lookupNumber.length >= 4,
+    retry: false,
+  })
+  const application = lookupNumber.length >= 4 ? lookup.data?.application : undefined
+  useEffect(() => {
+    if (application) form.setFieldValue('amount', application.remaining || undefined)
+  }, [application, form])
+  const lookupError = lookupNumber.length >= 4 && !lookup.isFetching ? lookup.error?.message : undefined
+
   async function run(action: () => Promise<boolean | void>, after?: () => void) {
     setError(null)
     setSaving(true)
     try {
       if ((await action()) !== false) after?.()
-      await client.invalidateQueries({ queryKey: ['payments-mine'] })
+      await Promise.all([client.invalidateQueries({ queryKey: ['payments-mine'] }), client.invalidateQueries({ queryKey: ['payment-application'] })])
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlab bo‘lmadi') }
     finally { setSaving(false) }
   }
@@ -89,8 +108,19 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
         <Form.Item label="Sana"><DatePicker allowClear={false} value={date} disabledDate={(day) => day.isAfter(dayjs(), 'day')} onChange={(value) => value && setDate(value)} /></Form.Item>
         {numberField}
         {amountField}
-        <Form.Item><Button type="primary" htmlType="submit" loading={saving}>Qo‘shish</Button></Form.Item>
+        <Form.Item><Button type="primary" htmlType="submit" loading={saving} disabled={application?.status === 'PAID' || !!lookupError}>Qo‘shish</Button></Form.Item>
       </Form>
+      {lookupError && <Alert className="mt-3" type="error" showIcon message={lookupError} />}
+      {application && <Alert className="mt-3" type={application.status === 'PAID' ? 'warning' : 'info'} showIcon
+        message={<Space wrap>
+          <Tag color={statusLabels[application.status].color}>{statusLabels[application.status].label}</Tag>
+          <span>Qarz: <b>{formatWholeSom(application.debt)}</b> so‘m</span>
+          <span>Undirilgan: <b>{formatWholeSom(application.paid)}</b> so‘m</span>
+          <span>Qoldiq: <b>{formatWholeSom(application.remaining)}</b> so‘m</span>
+        </Space>}
+        description={application.status === 'PAID'
+          ? `Bu ariza bo‘yicha to‘lov to‘liq undirilgan${application.lastPayment ? ` (oxirgi to‘lov ${dayjs(application.lastPayment.recordDate.slice(0, 10)).format('DD.MM.YYYY')}, ${application.lastPayment.fullName})` : ''}.`
+          : 'Summa qoldiq bo‘yicha to‘ldirildi. Qisman to‘lov bo‘lsa, summani o‘zgartiring.'} />}
     </Card>
     <Card size="small" loading={query.isPending} title={`${date.format('DD.MM.YYYY')} kuni kiritilgan to‘lovlar`}>
       <Table size="small" rowKey="id" columns={columns} dataSource={data?.records ?? []} pagination={false} locale={{ emptyText: 'Bu kunga to‘lov kiritilmagan' }}

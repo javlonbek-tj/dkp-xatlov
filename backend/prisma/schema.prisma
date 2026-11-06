@@ -105,6 +105,7 @@ model District {
   heads     User[]             @relation("DistrictHeads")
   employees DistrictEmployee[]
   payments  PaymentRecord[]
+  paymentApplications PaymentApplication[]
 
   @@unique([name, regionId])
   @@index([regionId])
@@ -252,6 +253,21 @@ model PaymentRecord {
   @@index([userId, recordDate])
   @@index([districtId, recordDate])
   @@index([applicationNumber])
+}
+
+// An application with a payment debt, imported from Excel; its payments are the PaymentRecords with the same number.
+model PaymentApplication {
+  id         String   @id @default(cuid())
+  number     String   @unique
+  districtId String
+  // Debt at import, million so‘m (6 decimals).
+  debt       Decimal  @db.Decimal(17, 6)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@index([districtId])
 }
 
 model EmployeeRegionAssignment {

@@ -7,6 +7,7 @@ import { apiFetch } from './api'
 import { exportExcel, type ExportHeader } from './excel-export'
 import { exportPdf } from './pdf-export'
 import PaymentAmountField from './PaymentAmountField'
+import PaymentApplicationsTab from './PaymentApplicationsTab'
 import { formatAmount, formatSom, savePayment, toMln, toSom, type PaymentRecord } from './payments'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
@@ -15,7 +16,7 @@ type Totals = { count: number; amount: number }
 type Periods = { daily: Totals; weekly: Totals; monthly: Totals }
 type District = { id: string; name: string; regionId: string; region: { id: string; name: string } }
 type Specialist = Periods & { id: string; fullName: string; phone: string | null; position: string | null; district: District | null }
-type DistrictTotal = Periods & District & { specialistCount: number; paymentDebt: number | null; paymentDebtDate: string | null }
+type DistrictTotal = Periods & District & { specialistCount: number; paymentDebt: number | null }
 type ApiData = { districts: District[]; specialists: Specialist[]; districtTotals: DistrictTotal[]; plan: { baseDate: string; deadline: string; workDays: number }; canEdit: boolean }
 type Values = { applicationNumber: string; amount: number }
 
@@ -115,7 +116,7 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
     setSaving(true)
     try {
       if ((await action()) !== false) after?.()
-      await Promise.all([client.invalidateQueries({ queryKey: ['payments'] }), client.invalidateQueries({ queryKey: ['payments-records'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['payments'] }), client.invalidateQueries({ queryKey: ['payments-records'] }), client.invalidateQueries({ queryKey: ['payment-applications'] })])
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Saqlab bo‘lmadi') }
     finally { setSaving(false) }
   }
@@ -128,7 +129,7 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
       lines: [`${place} bo‘yicha ${subject} to‘g‘risida`, 'MA’LUMOT'],
       note: `${filters.date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
     }
-    const headers: ExportHeader[] = bySpecialists ? ['Hudud', 'Tuman', 'F.I.Sh.', 'Lavozimi', 'Telefon', ...periodHeaders] : tab === 'plan' ? ['Hudud', 'Tuman', `${baseDateText} holatiga qoldiq (mln so‘m)`, `${baseDateText}–${deadlineText} ish kunlari`, ...(['Kunlik', 'Haftalik (Du–Ya)'].map((title) => ({ title, children: ['Reja (mln so‘m)', 'Undirilgan (mln so‘m)', 'Bajarilishi (%)'] })))] : ['Hudud', 'Tuman', 'Mutaxassislar', ...periodHeaders]
+    const headers: ExportHeader[] = bySpecialists ? ['Hudud', 'Tuman', 'F.I.Sh.', 'Lavozimi', 'Telefon', ...periodHeaders] : tab === 'plan' ? ['Hudud', 'Tuman', 'Arizalar qarzi (mln so‘m)', `${baseDateText}–${deadlineText} ish kunlari`, ...(['Kunlik', 'Haftalik (Du–Ya)'].map((title) => ({ title, children: ['Reja (mln so‘m)', 'Undirilgan (mln so‘m)', 'Bajarilishi (%)'] })))] : ['Hudud', 'Tuman', 'Mutaxassislar', ...periodHeaders]
     const rows = bySpecialists
       ? [['Jami', '', `${specialists.length} ta mutaxassis`, '', '', ...periodValues(specialistTotals)],
         ...specialists.map((row) => [row.district?.region.name, row.district?.name, row.fullName, row.position, row.phone, ...periodValues(row)])]
@@ -160,8 +161,7 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
   const planColumns: ColumnsType<DistrictTotal> = [
     { title: 'Tuman', key: 'district', width: 180, render: (_, row) => <div className="truncate leading-tight"><span className="font-medium">{row.name}</span><div className="text-xs text-slate-500">{row.region.name}</div></div> },
     {
-      title: <span className="leading-tight">{baseDateText} holatiga<br />qoldiq (mln so‘m)</span>, key: 'paymentDebt', width: 120, align: 'right',
-      render: (_, row) => <div className="leading-tight">{amountOrDash(row.paymentDebt)}{row.paymentDebtDate && row.paymentDebtDate.slice(0, 10) !== data?.plan.baseDate && <div className="text-xs text-slate-500">{dayjs(row.paymentDebtDate.slice(0, 10)).format('DD.MM.YYYY')}</div>}</div>,
+      title: <span className="leading-tight">Arizalar qarzi<br />(mln so‘m)</span>, key: 'paymentDebt', width: 120, align: 'right', render: (_, row) => amountOrDash(row.paymentDebt),
     },
     { title: <span className="leading-tight">{deadlineText} gacha<br />ish kunlari</span>, key: 'workDays', width: 120, align: 'center', render: () => workDays ?? '—' },
     ...([['daily', 'Kunlik'], ['weekly', 'Haftalik (Du–Ya)']] as const).map(([key, title]) => {
@@ -235,6 +235,7 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
                 ])}
               </Table.Summary.Row></Table.Summary> : null} /></>,
         },
+        { key: 'applications', label: 'Arizalar', children: <PaymentApplicationsTab token={token} regionId={regionId} districtId={filters.districtId} /> },
       ]} />
     </Card>
     <Modal title={details ? `${details.fullName} · ${filters.date.format('DD.MM.YYYY')}` : ''} open={!!details} onCancel={() => setDetails(null)} footer={null} width={760} destroyOnHidden>

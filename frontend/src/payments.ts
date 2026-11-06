@@ -2,6 +2,17 @@ import { Modal } from 'antd'
 import { apiFetch } from './api'
 
 export type PaymentRecord = { id: string; recordDate: string; applicationNumber: string; amount: string; createdAt: string }
+type District = { id: string; name: string; regionId: string; region: { id: string; name: string } }
+export type ApplicationStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
+// Debt, collected sum and remainder of an application, in so'm.
+export type PaymentApplication = { number: string; district: District; debt: number; paid: number; remaining: number; status: ApplicationStatus }
+export type ApplicationDetails = PaymentApplication & { lastPayment: { recordDate: string; fullName: string } | null }
+
+export const statusLabels: Record<ApplicationStatus, { label: string; color: string }> = {
+  UNPAID: { label: 'Undirilmagan', color: 'red' },
+  PARTIAL: { label: 'Qisman undirilgan', color: 'orange' },
+  PAID: { label: 'To‘liq undirilgan', color: 'green' },
+}
 
 // Million so'm with up to three decimals.
 export const formatAmount = (value: number | string) => Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 3 })
@@ -9,28 +20,19 @@ export const formatAmount = (value: number | string) => Number(value).toLocaleSt
 export const toSom = (mln: number | string) => Math.round(Number(mln) * 1_000_000)
 export const toMln = (som: number) => som / 1_000_000
 export const formatSom = (mln: number | string) => toSom(mln).toLocaleString('ru-RU')
+export const formatWholeSom = (som: number) => som.toLocaleString('ru-RU')
 // A payment of this many million so'm or more is saved only after a confirmation.
 const largeAmount = 50
 
-const confirm = (title: string, content: string, okText: string) => new Promise<boolean>((resolve) => Modal.confirm({
-  title, content, okText, cancelText: 'Bekor qilish',
-  onOk: () => resolve(true), onCancel: () => resolve(false),
-}))
-
-// Saves a payment (amount in million so'm). Asks first when the amount is large, and when the application number was entered before.
+// Saves a payment (amount in million so'm), asking first when the amount is large.
+// The server refuses unknown and fully paid applications and amounts above the remainder.
 export async function savePayment(token: string, path: string, method: 'POST' | 'PATCH', payload: { amount: number; recordDate: string; applicationNumber: string }): Promise<boolean> {
-  if (payload.amount >= largeAmount && !await confirm(
-    'Summa juda katta',
-    `Siz ${formatSom(payload.amount)} so‘m (${formatAmount(payload.amount)} mln so‘m) kiritdingiz. Summa to‘g‘rimi?`,
-    'Ha, to‘g‘ri',
-  )) return false
-  try {
-    await apiFetch(token, path, { method, body: JSON.stringify(payload) })
-    return true
-  } catch (cause) {
-    if ((cause as { code?: string }).code !== 'DUPLICATE_APPLICATION') throw cause
-    if (!await confirm('Ariza raqami avval kiritilgan', `${(cause as Error).message}. Baribir saqlansinmi?`, 'Saqlash')) return false
-    await apiFetch(token, path, { method, body: JSON.stringify({ ...payload, allowDuplicate: true }) })
-    return true
-  }
+  if (payload.amount >= largeAmount && !await new Promise<boolean>((resolve) => Modal.confirm({
+    title: 'Summa juda katta',
+    content: `Siz ${formatSom(payload.amount)} so‘m (${formatAmount(payload.amount)} mln so‘m) kiritdingiz. Summa to‘g‘rimi?`,
+    okText: 'Ha, to‘g‘ri', cancelText: 'Bekor qilish',
+    onOk: () => resolve(true), onCancel: () => resolve(false),
+  }))) return false
+  await apiFetch(token, path, { method, body: JSON.stringify(payload) })
+  return true
 }

@@ -483,3 +483,13 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - Payment lists show each amount in so'm; totals, plans and the analysis tables stay in million so'm.
 - `PaymentRecord.amount` now keeps 6 decimals (to the so'm): `Decimal(17, 6)`, migration `20261106000000_payment_amount_som` (type widening only), applied on Railway. The backend rounds to 6 decimals.
 - Verified with `prisma validate`, a diff of the Railway database against the schema (matches the migration), backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## Payment collection - Applications with a debt
+
+- New `PaymentApplication` (unique number, district, debt in million so'm with 6 decimals); migration `20261106010000_payment_applications`. A payment's application is matched by `PaymentRecord.applicationNumber` (numbers are stored upper case without spaces).
+- Saving a payment (`POST`/`PATCH /records`) now requires a known application ("Ariza topilmadi"), of the payment's district ("Bu ariza sizning tumaningizga tegishli emas"), not fully paid ("…to‘liq undirilgan (oxirgi to‘lov DD.MM.YYYY, F.I.Sh.)"), and an amount not above the remainder. The check and the insert run in one transaction that locks the application row. The old "number entered before, save anyway?" confirmation is removed.
+- Status is computed from the payments: Undirilmagan / Qisman undirilgan / To‘liq undirilgan (a zero debt counts as fully paid).
+- `GET /applications/:number` (specialist for their own district, administrator) returns debt, paid, remainder, status and the last payment; the specialist's form looks the typed number up, shows it and fills the amount with the remainder.
+- `GET /applications` (report scope) lists applications for the new "Arizalar" tab (search, status filter, totals, Excel export). `POST /applications/import` (administrator, 5 MB body) adds applications from an Excel file with "Район", "Заявление" and "Остаток" columns; numbers already saved are skipped, and nothing is saved when any row is invalid.
+- The "Reja" tab now takes each district's plan from the sum of its applications' debt ("Arizalar qarzi") instead of the Xatlov payment debt.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser. Migration applied on Railway; the 2 722 applications of "to‘lov 06.11.2026" were imported through the import endpoint (debt 4 900 203 321 so‘m, 7 with zero debt).
