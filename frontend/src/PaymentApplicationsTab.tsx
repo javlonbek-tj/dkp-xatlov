@@ -54,8 +54,11 @@ function PaymentApplicationsTab({ token, regionId, districtId }: { token: string
     },
     placeholderData: keepPreviousData,
   })
+  const [district, setDistrict] = useState<string | undefined>()
+  const applications = query.data?.applications ?? []
+  const districts = [...new Map(applications.map((row) => [row.district.id, row.district])).values()]
   const term = search.trim().toLocaleLowerCase()
-  const rows = (query.data?.applications ?? []).filter((row) => (!status || row.status === status) && JSON.stringify([row.number, row.district.name]).toLocaleLowerCase().includes(term))
+  const rows = applications.filter((row) => (!status || row.status === status) && (!district || row.district.id === district) && JSON.stringify([row.number, row.district.name]).toLocaleLowerCase().includes(term))
   const sum = (key: 'debt' | 'paid' | 'remaining') => rows.reduce((total, row) => total + row[key], 0)
 
   async function importFile(file: File) {
@@ -90,6 +93,8 @@ function PaymentApplicationsTab({ token, regionId, districtId }: { token: string
     <div className="mb-4 flex flex-wrap justify-between gap-3">
       <Space wrap>
         <Input.Search allowClear placeholder="Ariza raqami yoki tuman" className="!w-64" value={search} onChange={(event) => setSearch(event.target.value)} />
+        {districts.length > 1 && <Select allowClear showSearch optionFilterProp="label" placeholder="Tuman" className="min-w-48" value={district} onChange={setDistrict}
+          options={districts.map((item) => ({ value: item.id, label: `${item.name} (${item.region.name})` }))} />}
         <Select allowClear placeholder="Holati" className="min-w-44" value={status} onChange={setStatus} options={Object.entries(statusLabels).map(([value, item]) => ({ value, label: item.label }))} />
       </Space>
       <Space wrap>

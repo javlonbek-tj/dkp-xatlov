@@ -493,3 +493,11 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - `GET /applications` (report scope) lists applications for the new "Arizalar" tab (search, status filter, totals, Excel export). `POST /applications/import` (administrator, 5 MB body) adds applications from an Excel file with "Район", "Заявление" and "Остаток" columns; numbers already saved are skipped, and nothing is saved when any row is invalid.
 - The "Reja" tab now takes each district's plan from the sum of its applications' debt ("Arizalar qarzi") instead of the Xatlov payment debt.
 - Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser. Migration applied on Railway; the 2 722 applications of "to‘lov 06.11.2026" were imported through the import endpoint (debt 4 900 203 321 so‘m, 7 with zero debt).
+
+## Payment collection - Specialist's applications and district plan
+
+- Payment specialists' page has two tabs: "To‘lov kiritish" (as before, plus a district plan card) and "Arizalar" (the applications list of their own district, without import).
+- The plan card shows the district's daily and weekly (Du–Ya) plan, collected sum and completion percent for the selected date, computed as on the "Reja" tab (applications' debt / working days to 31.12; weekly = 5 daily plans). `GET /mine` returns `plan: { deadline, workDays, debt, district }`. The specialist's own totals cards are labelled "Mening to‘lovlarim".
+- `GET /applications` is open to payment specialists, limited to their district.
+- The "Arizalar" tab has a district filter (shown when the list has more than one district), besides the page's region/district filters.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`, and a local read-only call as `a.yandusov` (169 applications of G‘ozg‘on shahar, plan debt 450.53 mln); not checked in a browser.

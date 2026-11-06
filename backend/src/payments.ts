@@ -179,14 +179,24 @@ router.get('/mine', requireRole(UserRole.PAYMENT_SPECIALIST), async (request, re
     const user = request.auth!;
     const date = parseDate(request.query.date);
     const { monthStart } = periods(date);
-    const [specialist, records] = await Promise.all([
-      prisma.user.findUnique({ where: { id: user.id }, select: specialistSelect }),
+    const specialist = await prisma.user.findUnique({ where: { id: user.id }, select: specialistSelect });
+    const districtId = specialist?.district?.id ?? '';
+    const [records, districtRecords, debt] = await Promise.all([
       prisma.paymentRecord.findMany({ where: { userId: user.id, recordDate: { gte: monthStart, lte: date } }, orderBy: { createdAt: 'asc' } }),
+      prisma.paymentRecord.findMany({ where: { districtId, recordDate: { gte: monthStart, lte: date } }, select: { recordDate: true, amount: true } }),
+      prisma.paymentApplication.aggregate({ where: { districtId }, _sum: { debt: true } }),
     ]);
     response.json({
       specialist,
       records: records.filter((record) => record.recordDate.getTime() === date.getTime()),
       totals: summarize(records, date, () => user.id).get(user.id) ?? emptyTotals(),
+      // The district's plan and what the whole district collected, as on the "Reja" tab.
+      plan: {
+        deadline: planDeadline,
+        workDays: workDays(planBase, 5, planDeadline),
+        debt: debt._sum.debt?.toNumber() ?? 0,
+        district: summarize(districtRecords, date, () => districtId).get(districtId) ?? emptyTotals(),
+      },
       editableFrom: tashkentStartOfToday(),
     });
   } catch (error) { next(error); }
@@ -312,15 +322,20 @@ const applicationSelect = {
 } satisfies Prisma.PaymentApplicationSelect;
 
 // Every application in the report scope with its collected sum and status.
-router.get('/applications', readers, async (request, response, next) => {
+// Specialists see the applications of their own district.
+router.get('/applications', requireRole(UserRole.PAYMENT_SPECIALIST, UserRole.ADMIN, UserRole.REPUBLIC_EMPLOYEE, UserRole.REGIONAL_EMPLOYEE, UserRole.VIEWER, UserRole.DISTRICT_HEAD), async (request, response, next) => {
   try {
+    const user = request.auth!;
     const regionId = request.query.regionId;
     const districtId = request.query.districtId;
     if ([regionId, districtId].some((value) => value !== undefined && typeof value !== 'string')) {
       throw new ApiError(400, 'INVALID_FILTER', 'Filter values must be strings');
     }
+    const scope: Prisma.DistrictWhereInput = user.role === UserRole.PAYMENT_SPECIALIST
+      ? { id: (await prisma.user.findUnique({ where: { id: user.id }, select: { districtId: true } }))?.districtId ?? '' }
+      : reportDistrictScope(user);
     const district: Prisma.DistrictWhereInput = {
-      ...reportDistrictScope(request.auth!),
+      ...scope,
       ...(regionId ? { regionId: regionId as string } : {}),
       ...(districtId ? { id: districtId as string } : {}),
     };
