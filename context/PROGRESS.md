@@ -476,3 +476,10 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - No schema change: the existing `XatlovRecord.paymentDebt` is used. `GET /api/payments` returns `paymentDebt`/`paymentDebtDate` per district and `plan: { deadline, workDays }`.
 - Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
 - The plan is fixed: "Qoldiq" is each district's debt on 05.11.2026, the latest entry when the plan was set (`planBaseDate` in `payments.ts`, latest Xatlov record up to that date), so later daily debt entries do not change it. The daily plan = that debt / working days from 06.11.2026 up to 31.12.2026 (39); the weekly plan is the daily plan × 5 (a 5-day week). `plan` now also returns `baseDate`.
+
+## Payment collection - Amount entered in so'm
+
+- Specialists (and administrators editing a payment) now enter the amount in whole so'm with digit grouping (`PaymentAmountField`), with the same amount in million so'm shown below; the frontend converts it to million so'm before saving. Payments of 50 mln so'm or more ask for confirmation first (`savePayment`).
+- Payment lists show each amount in so'm; totals, plans and the analysis tables stay in million so'm.
+- `PaymentRecord.amount` now keeps 6 decimals (to the so'm): `Decimal(17, 6)`, migration `20261106000000_payment_amount_som` (type widening only), applied on Railway. The backend rounds to 6 decimals.
+- Verified with `prisma validate`, a diff of the Railway database against the schema (matches the migration), backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

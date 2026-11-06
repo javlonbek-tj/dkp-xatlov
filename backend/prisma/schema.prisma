@@ -241,8 +241,8 @@ model PaymentRecord {
   districtId        String
   recordDate        DateTime @db.Date
   applicationNumber String
-  // Million so'm.
-  amount            Decimal  @db.Decimal(14, 3)
+  // Million so‘m, to the so‘m (6 decimals).
+  amount            Decimal  @db.Decimal(17, 6)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

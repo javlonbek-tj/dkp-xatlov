@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tabs } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { apiFetch } from './api'
 import { exportExcel, type ExportHeader } from './excel-export'
 import { exportPdf } from './pdf-export'
-import { formatAmount, savePayment, type PaymentRecord } from './payments'
+import PaymentAmountField from './PaymentAmountField'
+import { formatAmount, formatSom, savePayment, toMln, toSom, type PaymentRecord } from './payments'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -177,10 +178,10 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
   const recordColumns: ColumnsType<PaymentRecord> = [
     { title: '№', key: 'index', width: 50, align: 'center', render: (_, _row, index) => index + 1 },
     { title: 'Ariza raqami', dataIndex: 'applicationNumber' },
-    { title: 'Miqdor (mln so‘m)', dataIndex: 'amount', align: 'right', render: formatAmount },
+    { title: 'Miqdor (so‘m)', dataIndex: 'amount', align: 'right', render: formatSom },
     { title: 'Kiritilgan vaqt', dataIndex: 'createdAt', width: 140, align: 'center', render: (value: string) => dayjs(value).format('DD.MM.YYYY HH:mm') },
     ...(data?.canEdit ? [{ title: 'Amallar', key: 'actions', width: 190, align: 'center' as const, render: (_: unknown, record: PaymentRecord) => <Space>
-      <Button size="small" onClick={() => { setEditing(record); editForm.setFieldsValue({ applicationNumber: record.applicationNumber, amount: Number(record.amount) }) }}>Tahrirlash</Button>
+      <Button size="small" onClick={() => { setEditing(record); editForm.setFieldsValue({ applicationNumber: record.applicationNumber, amount: toSom(record.amount) }) }}>Tahrirlash</Button>
       <Popconfirm title="To‘lovni o‘chirasizmi?" okText="Ha" cancelText="Yo‘q" onConfirm={() => run(() => apiFetch(token, `/api/payments/records/${record.id}`, { method: 'DELETE' }))}><Button size="small" danger>O‘chirish</Button></Popconfirm>
     </Space> }] : []),
   ]
@@ -241,11 +242,11 @@ function PaymentsPage({ token, user }: { token: string; user: User }) {
     </Modal>
     <Modal title="To‘lovni tahrirlash" open={!!editing} onCancel={() => setEditing(null)} onOk={() => editForm.submit()} confirmLoading={saving} destroyOnHidden>
       <Form form={editForm} layout="vertical" onFinish={(values) => editing && run(
-        () => savePayment(token, `/api/payments/records/${editing.id}`, 'PATCH', { ...values, recordDate: editing.recordDate.slice(0, 10) }),
+        () => savePayment(token, `/api/payments/records/${editing.id}`, 'PATCH', { ...values, amount: toMln(values.amount), recordDate: editing.recordDate.slice(0, 10) }),
         () => setEditing(null),
       )}>
         <Form.Item label="Ariza raqami" name="applicationNumber" rules={[{ required: true, whitespace: true, message: 'Ariza raqamini kiriting' }]}><Input maxLength={50} /></Form.Item>
-        <Form.Item label="To‘lov miqdori (mln so‘m)" name="amount" rules={[{ required: true, message: 'Miqdorni kiriting' }]}><InputNumber min={0.001} precision={3} className="w-full" /></Form.Item>
+        <PaymentAmountField className="!w-full" />
       </Form>
     </Modal>
   </Space>

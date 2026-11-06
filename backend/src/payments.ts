@@ -65,7 +65,7 @@ function parsePayment(body: unknown) {
   return {
     recordDate,
     applicationNumber: text(input.applicationNumber, 'Application number', 50),
-    amount: new Prisma.Decimal(amount.toFixed(3)),
+    amount: new Prisma.Decimal(amount.toFixed(6)),
   };
 }
 

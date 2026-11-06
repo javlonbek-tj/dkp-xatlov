@@ -1,0 +1,1 @@
+ALTER TABLE "PaymentRecord" ALTER COLUMN "amount" SET DATA TYPE DECIMAL(17,6);

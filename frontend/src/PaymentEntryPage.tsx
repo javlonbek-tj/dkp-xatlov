@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Space, Statistic, Table, Typography } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Space, Statistic, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { apiFetch } from './api'
-import { formatAmount, savePayment, type PaymentRecord } from './payments'
+import PaymentAmountField from './PaymentAmountField'
+import { formatAmount, formatSom, savePayment, toMln, toSom, type PaymentRecord } from './payments'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role }
@@ -46,26 +47,26 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
   }
 
   const add = (values: Values) => run(
-    () => savePayment(token, '/api/payments/records', 'POST', { ...values, recordDate: date.format('YYYY-MM-DD') }),
+    () => savePayment(token, '/api/payments/records', 'POST', { ...values, amount: toMln(values.amount), recordDate: date.format('YYYY-MM-DD') }),
     () => { form.resetFields(); form.focusField('applicationNumber') },
   )
   const update = (values: Values) => editing && run(
-    () => savePayment(token, `/api/payments/records/${editing.id}`, 'PATCH', { ...values, recordDate: editing.recordDate.slice(0, 10) }),
+    () => savePayment(token, `/api/payments/records/${editing.id}`, 'PATCH', { ...values, amount: toMln(values.amount), recordDate: editing.recordDate.slice(0, 10) }),
     () => setEditing(null),
   )
 
   const columns: ColumnsType<PaymentRecord> = [
     { title: '№', key: 'index', width: 50, align: 'center', render: (_, _row, index) => index + 1 },
     { title: 'Ariza raqami', dataIndex: 'applicationNumber' },
-    { title: 'To‘lov miqdori (mln so‘m)', dataIndex: 'amount', align: 'right', render: formatAmount },
+    { title: 'To‘lov miqdori (so‘m)', dataIndex: 'amount', align: 'right', render: formatSom },
     { title: 'Kiritilgan vaqt', dataIndex: 'createdAt', width: 140, align: 'center', render: (value: string) => dayjs(value).format('DD.MM.YYYY HH:mm') },
     { title: 'Amallar', key: 'actions', width: 190, align: 'center', render: (_, record) => editable(record) && <Space>
-      <Button size="small" onClick={() => { setEditing(record); editForm.setFieldsValue({ applicationNumber: record.applicationNumber, amount: Number(record.amount) }) }}>Tahrirlash</Button>
+      <Button size="small" onClick={() => { setEditing(record); editForm.setFieldsValue({ applicationNumber: record.applicationNumber, amount: toSom(record.amount) }) }}>Tahrirlash</Button>
       <Popconfirm title="To‘lovni o‘chirasizmi?" okText="Ha" cancelText="Yo‘q" onConfirm={() => run(() => apiFetch(token, `/api/payments/records/${record.id}`, { method: 'DELETE' }))}><Button size="small" danger>O‘chirish</Button></Popconfirm>
     </Space> },
   ]
 
-  const amountField = <Form.Item label="To‘lov miqdori (mln so‘m)" name="amount" rules={[{ required: true, message: 'Miqdorni kiriting' }]}><InputNumber min={0.001} precision={3} className="!w-48" placeholder="0,000" /></Form.Item>
+  const amountField = <PaymentAmountField className="!w-48" />
   const numberField = <Form.Item label="Ariza raqami" name="applicationNumber" rules={[{ required: true, whitespace: true, message: 'Ariza raqamini kiriting' }]}><Input maxLength={50} className="!w-56" placeholder="Ariza raqami" /></Form.Item>
 
   return <Space direction="vertical" size="middle" className="w-full">
@@ -95,7 +96,7 @@ function PaymentEntryPage({ token }: { token: string; user: User }) {
       <Table size="small" rowKey="id" columns={columns} dataSource={data?.records ?? []} pagination={false} locale={{ emptyText: 'Bu kunga to‘lov kiritilmagan' }}
         summary={(rows) => rows.length ? <Table.Summary.Row className="font-semibold [&>td]:!bg-slate-100">
           <Table.Summary.Cell index={0} colSpan={2}>Jami: {rows.length} ta ariza</Table.Summary.Cell>
-          <Table.Summary.Cell index={2} align="right">{formatAmount(rows.reduce((sum, row) => sum + Number(row.amount), 0))}</Table.Summary.Cell>
+          <Table.Summary.Cell index={2} align="right">{formatSom(rows.reduce((sum, row) => sum + Number(row.amount), 0))}</Table.Summary.Cell>
           <Table.Summary.Cell index={3} colSpan={2} />
         </Table.Summary.Row> : null} />
       <Typography.Text type="secondary" className="text-xs">Faqat bugun kiritilgan yozuvlarni tahrirlash yoki o‘chirish mumkin.</Typography.Text>
