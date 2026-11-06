@@ -468,3 +468,10 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 ## Report - all overdue stages
 
 - "Muddat kechikishi" in the report now shows "1-3 kun", "4-7 kun" and "8-14 kun" before "15-30 kungacha" and "1 oydan ortiq", from the same latest overdue snapshot. Like the other stage columns, the three highest districts are red. Excel/PDF exports include the new columns; highlight positions were shifted.
+
+## Payment collection - Plan to finish the debt by 31 December
+
+- "To‘lov undirish" has a new "Reja" tab (Tuman, "Qoldiq", "DD.MM.YYYY gacha ish kunlari", then "Kunlik" and "Haftalik (Du–Ya, N ish kuni)" groups, each with "Reja", "Undirilgan" and "Bajarilishi (%)" = collected / plan, red below 100%; totals row; Excel/PDF). The weekly plan is the daily plan × working days (5-day week, holidays excluded) from Monday up to the selected date (`plan.weekWorkDays`): "Qoldiq" is each district's payment debt from its latest Xatlov record up to the selected date, entered by the republic representative on the Xatlov page (the record's date is shown when it is older than the selected date), and "Kunlik reja" is debt / working days left. The "Tumanlar bo‘yicha" table is unchanged except for narrower columns (it no longer stretches to a wide scroll width).
+- The deadline is 31 December of the selected date's year; working days are counted after the selected date in a 5-day week with holidays excluded (`workDays` in `xatlov-plan.ts` now takes an end date). Districts with a debt but no specialists or payments are also listed.
+- No schema change: the existing `XatlovRecord.paymentDebt` is used. `GET /api/payments` returns `paymentDebt`/`paymentDebtDate` per district and `plan: { deadline, workDays }`.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

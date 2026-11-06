@@ -31,11 +31,11 @@ function holidayDays(workWeek: WorkWeek) {
   return days;
 }
 
-// Working days left after the given date up to the deadline, holidays excluded.
-function workDays(after: Date, workWeek: WorkWeek) {
+// Working days left after the given date up to the deadline (YYYY-MM-DD), holidays excluded.
+export function workDays(after: Date, workWeek: WorkWeek, until: string = deadline) {
   const off = holidayDays(workWeek);
   let days = 0;
-  for (const date = new Date(after); iso(date) < deadline;) {
+  for (const date = new Date(after); iso(date) < until;) {
     date.setUTCDate(date.getUTCDate() + 1);
     if (isWorkingDay(date, workWeek) && !off.has(iso(date))) days++;
   }

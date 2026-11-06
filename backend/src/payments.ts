@@ -5,6 +5,7 @@ import { reportDistrictScope, requireAuth, requireRole } from './auth.js';
 import { tashkentToday } from './dashboard.js';
 import { prisma } from './db.js';
 import { hashPassword } from './password.js';
+import { workDays } from './xatlov-plan.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -208,7 +209,7 @@ router.get('/', readers, async (request, response, next) => {
       ...(regionId ? { regionId: regionId as string } : {}),
       ...(districtId ? { id: districtId as string } : {}),
     };
-    const [districts, specialists, records] = await Promise.all([
+    const [districts, specialists, records, debts] = await Promise.all([
       prisma.district.findMany({
         where: scope,
         orderBy: [{ region: { name: 'asc' } }, { name: 'asc' }],
@@ -223,7 +224,22 @@ router.get('/', readers, async (request, response, next) => {
         where: { district: locationFilter, recordDate: { gte: monthStart, lte: date } },
         select: { userId: true, districtId: true, recordDate: true, amount: true },
       }),
+      // Each district's payment debt left to collect, from its latest Xatlov record up to the date.
+      prisma.xatlovRecord.findMany({
+        where: { district: locationFilter, recordDate: { lte: date }, paymentDebt: { not: null } },
+        distinct: ['districtId'],
+        orderBy: [{ districtId: 'asc' }, { recordDate: 'desc' }],
+        select: { districtId: true, recordDate: true, paymentDebt: true },
+      }),
     ]);
+    const debtByDistrict = new Map(debts.map((item) => [item.districtId, { paymentDebt: item.paymentDebt!.toNumber(), paymentDebtDate: item.recordDate }]));
+    // The debt must be collected by 31 December of the selected year, in a 5-day week without holidays.
+    const deadline = `${date.getUTCFullYear()}-12-31`;
+    const workDaysLeft = workDays(date, 5, deadline);
+    // Working days from Monday of the date's week up to the date, for the weekly plan.
+    const dayBeforeWeek = new Date(periods(date).weekStart);
+    dayBeforeWeek.setUTCDate(dayBeforeWeek.getUTCDate() - 1);
+    const weekWorkDays = workDays(dayBeforeWeek, 5, date.toISOString().slice(0, 10));
     const bySpecialist = summarize(records, date, (record) => record.userId);
     const byDistrict = summarize(records, date, (record) => record.districtId);
     const specialistCount = new Map<string, number>();
@@ -234,8 +250,14 @@ router.get('/', readers, async (request, response, next) => {
       // Districts that have specialists or payments.
       districtTotals: districts
         .filter((district) => (!regionId || district.regionId === regionId) && (!districtId || district.id === districtId))
-        .filter((district) => specialistCount.has(district.id) || byDistrict.has(district.id))
-        .map((district) => ({ ...district, specialistCount: specialistCount.get(district.id) ?? 0, ...(byDistrict.get(district.id) ?? emptyTotals()) })),
+        .filter((district) => specialistCount.has(district.id) || byDistrict.has(district.id) || debtByDistrict.has(district.id))
+        .map((district) => ({
+          ...district,
+          specialistCount: specialistCount.get(district.id) ?? 0,
+          ...(byDistrict.get(district.id) ?? emptyTotals()),
+          ...(debtByDistrict.get(district.id) ?? { paymentDebt: null, paymentDebtDate: null }),
+        })),
+      plan: { deadline, workDays: workDaysLeft, weekWorkDays },
       canEdit: user.role === UserRole.ADMIN,
     });
   } catch (error) { next(error); }
