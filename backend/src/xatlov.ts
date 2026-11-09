@@ -68,6 +68,8 @@ router.get('/', requireAuth, async (request, response, next) => {
     const weekStart = new Date(date);
     weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
     const weekEnd = date;
+    // Working days are Monday to Friday; weekend work raises the total but is not counted as a working day.
+    const workDays = Math.min(((date.getUTCDay() + 6) % 7) + 1, 5);
     // The finish-date forecast uses the pace of the last 5 working days up to the selected date.
     const paceStart = lastWorkDaysStart(date, 5);
     const scope = readableDistrictScope(user);
@@ -103,8 +105,8 @@ router.get('/', requireAuth, async (request, response, next) => {
         ...record,
         weeklyCensusCount: weekOf(record.districtId).reduce((sum, item) => sum + item.censusCount, 0),
         weeklyMigrationCount: weekOf(record.districtId).reduce((sum, item) => sum + item.migrationCount, 0),
-        // Days worked this week = days with a saved record from Monday on.
-        weeklyDays: weekOf(record.districtId).length,
+        // Working days (Monday to Friday) of the week up to the selected date.
+        weeklyDays: workDays,
         // Census and migration on each day of the week, Monday first; null for a day without a record.
         weekByDay: Array.from({ length: 7 }, (_, day) => {
           const item = weekOf(record.districtId).find((entry) => (entry.recordDate.getUTCDay() + 6) % 7 === day);

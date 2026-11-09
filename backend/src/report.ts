@@ -62,6 +62,8 @@ router.get('/', requireAuth, async (request, response, next) => {
     const weekStart = new Date(date);
     weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
     const weekEnd = date;
+    // Working days are Monday to Friday; weekend work raises the total but is not counted as a working day.
+    const workDays = Math.min(((date.getUTCDay() + 6) % 7) + 1, 5);
     const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 
     const [xatlovRecords, weeklyXatlov, radLimits, overdue, mkdRecords, mkdYears] = await Promise.all([
@@ -118,8 +120,8 @@ router.get('/', requireAuth, async (request, response, next) => {
           paymentDebt: xatlov.paymentDebt === null ? null : xatlov.paymentDebt.toNumber(),
         } : null,
         weeklyMigrationCount: weekly.length ? weekly.reduce((sum, record) => sum + record.migrationCount, 0) : null,
-        // Days worked this week = days with a saved record from Monday on.
-        weeklyDays: weekly.length,
+        // Working days (Monday to Friday) of the week up to the report date; 0 when the week has no record.
+        weeklyDays: weekly.length ? workDays : 0,
         // Migration on each day of the week, Monday first; null for a day without a record.
         weekMigration: Array.from({ length: 7 }, (_, day) => weekly.find((record) => (record.recordDate.getUTCDay() + 6) % 7 === day)?.migrationCount ?? null),
         rad: rad ? { monthlyLimit: rad.monthlyLimit, rejectedApplications: rad.rejectedApplications } : null,
