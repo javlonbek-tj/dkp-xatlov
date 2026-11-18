@@ -346,6 +346,63 @@ function ReportPage({ token }: { token: string; user: User }) {
     else void exportExcel(`${filename}.xlsx`, headers, rows, options)
   }
 
+  // Short print-ready Excel (A4 landscape, one page): no republic representative, no daily plan, days of the week collapsed.
+  function exportShortExcel() {
+    const title = {
+      lines: [`“Dolzarb 90 kunlik” doirasida ${data?.region?.name ?? ''} boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida`, 'MA’LUMOT'],
+      note: `${date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
+    }
+    const headers: ExportHeader[] = [
+      'T/r', 'Hudud nomi', 'Viloyat vakili',
+      {
+        title: 'Xatlov va migratsiya', children: [
+          'Jami xodimlar soni',
+          { title: 'shundan', children: ['xatlovda'] },
+          'Jami obyektlar soni', 'Jami MFY soni', 'Yakunlangan MFY soni', 'Xatlov yakunlangan obyekt',
+          { title: '', children: ['bir kunda', 'Du–Ya', '1 xodimga kunlik'] },
+        ],
+      },
+      {
+        title: 'Rad etish', children: [
+          `${monthName} oyi rejasi`, 'amalda',
+          { title: 'farqi', children: ['foiz', 'qoldiq'] },
+        ],
+      },
+      { title: 'Muddat kechikishi', children: ['1-3 kun', '4-7 kun', '8-14 kun', '15-30 kungacha', '1 oydan ortiq'] },
+      { title: 'MKD (jarayonda)', children: ['Jami', ...(mkdYears.length ? [{ title: 'shundan', children: mkdYears.map((year) => `${year}-yil`) }] : [])] },
+      'To‘lov bo‘yicha qarzdorlik (mln so‘m)',
+    ]
+    const rows = lines.map((line) => [
+      line.index, line.name, line.index === null ? '' : employeeText(line.regional),
+      line.engineerCount, line.xatlovEmployeeCount, line.objectCount, line.mfyCount, line.completedMfyCount, line.censusCount,
+      line.dailyCompletedObjects, line.weeklyMigration, line.migrationPerEmployeeDay,
+      line.radPlan, line.radActual, line.radPercent, line.radRemainder,
+      line.overdue1to3, line.overdue4to7, line.overdue8to14, line.overdue15to30, line.overdueOver30,
+      line.mkdTotal, ...mkdYears.map((year) => mkdYearValue(line, year)), line.paymentDebt,
+    ])
+    void exportExcel(`hisobot-qisqa-${date.format('YYYY-MM-DD')}.xlsx`, headers, rows, {
+      title,
+      totalRows: 1,
+      print: {
+        titleSize: 24, headerSize: 14, groupHeaderSize: 16, firstColumnSize: 11, textSize: 14, numberSize: 18,
+        headerHeights: [42.75, 30, 67.5], rowHeight: 44.25, multilineRowHeight: 66.75, zoom: 70, onePage: true,
+      },
+      // Leaf column positions of the red-highlighted cells, matching the table.
+      highlight: (row, column) => {
+        const key = lines[row].key
+        return (column === 11 && worstPerEmployee.has(key))
+          || (column >= 12 && column <= 15 && worstRad.has(key))
+          || (column === 16 && worstOverdue1to3.has(key))
+          || (column === 17 && worstOverdue4to7.has(key))
+          || (column === 18 && worstOverdue8to14.has(key))
+          || (column === 19 && worstOverdue15to30.has(key))
+          || (column === 20 && worstOverdueOver30.has(key))
+          // MKD "Jami" and the year columns.
+          || (column >= 21 && column <= 21 + mkdYears.length && worstMkd.has(key))
+      },
+    })
+  }
+
   return (
     <Space direction="vertical" size="middle" className="w-full">
       {error && <Alert type="error" showIcon message={error} />}
@@ -366,6 +423,7 @@ function ReportPage({ token }: { token: string; user: User }) {
           </Space>
           <Space>
             <Button onClick={() => exportReport('excel')} disabled={!lines.length}>Excel uchun eksport</Button>
+            <Button onClick={exportShortExcel} disabled={!lines.length}>Excel (qisqa, pechat uchun)</Button>
             <Button onClick={() => exportReport('pdf')} disabled={!lines.length} loading={pdfLoading}>PDF yuklab olish</Button>
           </Space>
         </div>

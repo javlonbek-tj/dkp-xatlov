@@ -9,6 +9,24 @@ type ExportOptions = {
   totalRows?: number
   // Data cells (zero-based row and column) to highlight in red.
   highlight?: (row: number, column: number) => boolean
+  // Print-ready layout: A4 landscape, page width fitted, fixed fonts and row heights.
+  print?: PrintLayout
+}
+export type PrintLayout = {
+  titleSize: number
+  // Plain top-level titles and the titles inside groups.
+  headerSize: number
+  groupHeaderSize: number
+  firstColumnSize: number
+  textSize: number
+  numberSize: number
+  // Header row heights from top to bottom (30 when missing) and data row heights.
+  headerHeights: number[]
+  rowHeight: number
+  multilineRowHeight: number
+  zoom: number
+  // Fit the whole table on one page; otherwise only the width is fitted and the header repeats on each page.
+  onePage: boolean
 }
 
 export const depth = (header: ExportHeader): number => typeof header === 'string' ? 1 : 1 + Math.max(...header.children.map(depth))
@@ -24,7 +42,17 @@ export async function exportExcel(filename: string, headers: ExportHeader[], row
   // Header rows come right after the title rows.
   const headerRows = titleRows + Math.max(...headers.map(depth))
   const columnCount = headers.reduce((sum, header) => sum + width(header), 0)
-  const sheet = workbook.addWorksheet('Ma’lumotlar', { views: [{ state: 'frozen', ySplit: headerRows }] })
+  const print = options.print
+  const sheet = workbook.addWorksheet('Ma’lumotlar', {
+    views: [{ state: 'frozen', ySplit: headerRows, ...(print ? { style: 'pageBreakPreview' as const, zoomScale: print.zoom } : {}) }],
+    ...(print ? {
+      pageSetup: {
+        paperSize: 9, orientation: 'landscape' as const, fitToPage: true, fitToWidth: 1, fitToHeight: print.onePage ? 1 : 0, horizontalCentered: true,
+        margins: { left: 0.12, right: 0.12, top: 0.75, bottom: 0.75, header: 0.31, footer: 0.31 },
+        ...(print.onePage ? {} : { printTitlesRow: `${titleRows + 1}:${headerRows}` }),
+      },
+    } : {}),
+  })
   const border = { style: 'thin' as const, color: { argb: 'FFCBD5E1' } }
   const borders = { top: border, left: border, bottom: border, right: border }
   const solid = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } })
@@ -48,10 +76,10 @@ export async function exportExcel(filename: string, headers: ExportHeader[], row
     lines.forEach((text, index) => {
       const cell = sheet.getCell(index + 1, 1)
       cell.value = text
-      cell.font = { bold: true, size: 13, color: { argb: index === 0 ? 'FF991B1B' : 'FF1E3A8A' } }
+      cell.font = { bold: true, size: print?.titleSize ?? 13, color: { argb: index === 0 ? 'FF991B1B' : 'FF1E3A8A' } }
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
       sheet.mergeCells(index + 1, 1, index + 1, columnCount)
-      sheet.getRow(index + 1).height = 22
+      sheet.getRow(index + 1).height = print ? Math.max(22, print.titleSize * 1.4) : 22
     })
     if (note) {
       const cell = sheet.getCell(titleRows, 1)
@@ -62,15 +90,18 @@ export async function exportExcel(filename: string, headers: ExportHeader[], row
     }
   }
   let column = 1
+  // Columns of plain top-level titles; in print they use a smaller font than the group columns.
+  const plainColumns = new Set<number>()
   for (const header of headers) {
+    if (typeof header === 'string') plainColumns.add(column)
     place(header, titleRows + 1, column)
     column += width(header)
   }
   for (let row = titleRows + 1; row <= headerRows; row += 1) {
-    sheet.getRow(row).height = 30
+    sheet.getRow(row).height = print?.headerHeights[row - titleRows - 1] ?? 30
     for (let col = 1; col <= columnCount; col += 1) {
       const cell = sheet.getCell(row, col)
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, ...(print ? { size: plainColumns.has(col) ? print.headerSize : print.groupHeaderSize } : {}) }
       cell.fill = solid('FF1E40AF')
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
       cell.border = borders
@@ -80,13 +111,17 @@ export async function exportExcel(filename: string, headers: ExportHeader[], row
   rows.forEach((values, index) => {
     const row = sheet.addRow(values.map((value) => value ?? ''))
     const isTotal = index < (options.totalRows ?? 0)
+    if (print) row.height = values.some((value) => typeof value === 'string' && value.includes('\n')) ? print.multilineRowHeight : print.rowHeight
     for (let col = 1; col <= columnCount; col += 1) {
       const cell = row.getCell(col)
       const highlighted = options.highlight?.(index, col - 1)
       cell.border = borders
       cell.alignment = { vertical: 'middle', horizontal: typeof cell.value === 'number' ? 'center' : 'left', wrapText: typeof cell.value === 'string' && cell.value.includes('\n') }
       if (typeof cell.value === 'number') cell.numFmt = Number.isInteger(cell.value) ? '#,##0' : '#,##0.00'
-      if (isTotal || highlighted) cell.font = { bold: true, ...(highlighted ? { color: { argb: 'FFDC2626' } } : {}) }
+      // In print numbers are bold.
+      const size = !print ? undefined : col === 1 ? print.firstColumnSize : typeof cell.value === 'number' ? print.numberSize : print.textSize
+      const bold = isTotal || highlighted || (print && col > 1 && typeof cell.value === 'number')
+      if (bold || size) cell.font = { bold, ...(size ? { size } : {}), ...(highlighted ? { color: { argb: 'FFDC2626' } } : {}) }
       if (highlighted) cell.fill = solid('FFFEE2E2')
       else if (isTotal) cell.fill = solid('FFE2E8F0')
       else if (index % 2 === 1) cell.fill = solid('FFF8FAFC')
@@ -97,9 +132,17 @@ export async function exportExcel(filename: string, headers: ExportHeader[], row
   sheet.columns.forEach((item, index) => {
     // Multi-line cells are as wide as their longest line.
     const lengths = [titles[index] ?? '', ...rows.map((row) => String(row[index] ?? ''))].flatMap((text) => text.split('\n')).map((text) => text.length)
-    item.width = Math.min(Math.max(...lengths, 8) + 2, 40)
+    if (!print) item.width = Math.min(Math.max(...lengths, 8) + 2, 40)
+    else {
+      // Header titles wrap, so only the data decides the width; larger fonts need wider columns.
+      const data = rows.flatMap((row) => String(row[index] ?? '').split('\n')).map((text) => text.length)
+      const numeric = rows.some((row) => typeof row[index] === 'number')
+      // A numeric first column is the narrow T/r.
+      if (index === 0 && numeric) item.width = 4
+      else item.width = Math.min(Math.max(Math.max(...data, 0) * (numeric ? print.numberSize : print.textSize) / 12 + 3, 10), 30)
+    }
   })
-  sheet.autoFilter = { from: { row: headerRows, column: 1 }, to: { row: headerRows, column: columnCount } }
+  if (!print) sheet.autoFilter ={ from: { row: headerRows, column: 1 }, to: { row: headerRows, column: columnCount } }
 
   const buffer = await workbook.xlsx.writeBuffer()
   const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))

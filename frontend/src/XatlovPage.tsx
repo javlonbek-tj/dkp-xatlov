@@ -278,6 +278,43 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     else void exportExcel(`${filename}.xlsx`, headers, rows, options)
   }
 
+  // Short print-ready Excel (A4 landscape): only the main columns, days of the week collapsed.
+  function exportShortExcel() {
+    const place = data.districts.find((item) => item.id === filters.districtId)?.name ?? regions.find((item) => item.id === regionId)?.name ?? 'Respublika'
+    const title = {
+      lines: [`“Dolzarb 90 kunlik” doirasida ${place} bo‘yicha xatlov va migratsiya ishlari to‘g‘risida`, 'MA’LUMOT'],
+      note: `${filters.date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
+    }
+    const headers: ExportHeader[] = [
+      'Hudud', 'Tuman', 'Viloyat vakili',
+      { title: 'Xodimlar', children: ['Jami', 'Xatlovda'] },
+      { title: 'Natijalar', children: ['Tugallangan MFY', 'Yakunlangan obyekt', 'Xatlov soni', 'Migratsiya soni', '1 xodimga kunlik migratsiya'] },
+      { title: 'Haftalik (Du–Ya)', children: ['Xatlov soni', 'Migratsiya soni', '1 xodimga kunlik migratsiya'] },
+    ]
+    // Migration of the selected day per xatlov employee; the total divides by the employees of districts with a record.
+    const dayEmployees = visibleRecords.reduce((sum, row) => sum + (row.district.xatlovEmployeeCount ?? 0), 0)
+    const rows = [
+      ['Jami', `${visibleDistricts.length} ta tuman`, '', totals.engineers, totals.xatlovEmployees, totals.completedMfy, totals.completedObjects, totals.census, totals.migration, perEmployeeDay(totals.migration, dayEmployees), totals.weeklyCensus, totals.weeklyMigration, perEmployeeDay(totals.weeklyMigration, totals.employeeDays)],
+      ...visibleRecords.map((row) => [
+        row.district.region.name, row.district.name, employeeText(row.district.regionalEmployeeAssignment?.user),
+        row.district.engineerCount, row.district.xatlovEmployeeCount,
+        row.completedMfyCount, row.completedObjectCount, row.censusCount, row.migrationCount, perEmployeeDay(row.migrationCount, row.district.xatlovEmployeeCount ?? 0),
+        // Monday to the selected date.
+        row.weeklyCensusCount, row.weeklyMigrationCount, perEmployeeDay(row.weeklyMigrationCount, employeeDays(row)),
+      ]),
+    ]
+    void exportExcel(`xatlov-qisqa-${filters.date.format('YYYY-MM-DD')}.xlsx`, headers, rows, {
+      title,
+      totalRows: 1,
+      print: {
+        titleSize: 16, headerSize: 11, groupHeaderSize: 11, firstColumnSize: 11, textSize: 11, numberSize: 12,
+        headerHeights: [30, 45], rowHeight: 23.25, multilineRowHeight: 47.25, zoom: 100, onePage: true,
+      },
+      // The weekly "1 xodimga kunlik migratsiya" is red for the worst districts, as in the table.
+      highlight: (row, column) => row > 0 && column === 12 && worstPerEmployee.has(visibleRecords[row - 1].id),
+    })
+  }
+
   const planDeadline = plan ? dayjs(plan.deadline).format('DD.MM.YYYY') : ''
   // The weekly total alone, or, while the week is open, a group of the days of the week and the total.
   const weekColumns = (field: 'censusCount' | 'migrationCount', title: string, total: ColumnsType<RecordRow>[number]): ColumnsType<RecordRow> => weekOpen
@@ -340,7 +377,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       <DatePicker allowClear={false} value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
     {plan && <Alert type="info" showIcon message={<span>Reja: {planDeadline} gacha qolgan ish kunlari — 5 kunlik haftada <b>{plan.fiveDayWorkDays}</b> kun, 6 kunlik haftada <b>{plan.sixDayWorkDays}</b> kun.</span>} />}
-    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2140 + (weekOpen ? 2 * weekDays.length * 50 : 0) }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={exportShortExcel} disabled={!visibleRecords.length}>Excel (qisqa, pechat uchun)</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2140 + (weekOpen ? 2 * weekDays.length * 50 : 0) }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>
