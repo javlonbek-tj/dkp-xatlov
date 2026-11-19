@@ -156,7 +156,7 @@ function employeeCell(employee: Employee) {
 }
 
 function ReportPage({ token }: { token: string; user: User }) {
-  const [date, setDate] = useState(dayjs())
+  const [date, setDate] = useState(dayjs().subtract(1, 'day'))
   const [regionId, setRegionId] = useState<string>()
   const [pdfError, setPdfError] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
