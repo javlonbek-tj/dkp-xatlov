@@ -13,7 +13,7 @@ import { overdueApplicationsRouter } from './overdue-applications.js';
 import { dashboardRouter } from './dashboard.js';
 import { reportRouter } from './report.js';
 import { assignmentsRouter } from './assignments.js';
-import { districtEmployeesRouter } from './district-employees.js';
+import { districtHeadsRouter } from './district-heads.js';
 import { paymentsRouter } from './payments.js';
 import { etirofRouter } from './etirof.js';
 
@@ -32,7 +32,7 @@ app.use('/api/overdue-applications', overdueApplicationsRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/assignments', assignmentsRouter);
-app.use('/api/district-employees', districtEmployeesRouter);
+app.use('/api/district-heads', districtHeadsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/etirof', etirofRouter);
 

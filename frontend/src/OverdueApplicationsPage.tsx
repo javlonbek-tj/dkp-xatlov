@@ -11,7 +11,6 @@ type User = { id: string; username: string; fullName: string; role: Role }
 type Employee = { fullName: string; phone: string | null }
 type District = {
   id: string; name: string; regionId: string; region: { id: string; name: string }
-  republicEmployeeAssignment: { user: Employee } | null
   regionalEmployeeAssignment: { user: Employee } | null
 }
 type StageField = 'stage1to3' | 'stage4to7' | 'stage8to14' | 'stage15to30' | 'stage31to90' | 'stage90plus'
@@ -85,7 +84,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
 
   const regions = useMemo(() => [...new Map(data.districts.map((item) => [item.region.id, item.region])).values()], [data.districts])
   const filterDistricts = data.districts.filter((item) => !filters.regionId || item.regionId === filters.regionId)
-  const visibleRecords = data.records.filter((row) => [row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const visibleRecords = data.records.filter((row) => [row.district.region.name, row.district.name, row.district.regionalEmployeeAssignment?.user.fullName].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   // The three records with the most overdue applications are highlighted.
   const worstIds = useMemo(() => new Set(data.records
@@ -103,7 +102,6 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
 
   const columns: ColumnsType<OverdueRecord> = [
     { title: 'Tuman', key: 'district', width: 190, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
-    { title: 'Respublika vakili', key: 'republic', width: 190, render: (_, row) => employeeCell(row.district.republicEmployeeAssignment?.user) },
     { title: 'Viloyat vakili', key: 'regional', width: 190, render: (_, row) => employeeCell(row.district.regionalEmployeeAssignment?.user) },
     { title: 'Kechikish bosqichlari', children: stages.map((stage) => ({
       title: stage.label, dataIndex: stage.field, width: 95, align: 'center' as const,
@@ -135,12 +133,12 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
         <Input.Search allowClear placeholder="Tuman yoki vakil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} />
         <Space>
           <Button onClick={() => void exportExcel(`muddati-otgan-arizalar-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
-            'Hudud', 'Tuman', 'Respublika vakili', 'Viloyat vakili',
+            'Hudud', 'Tuman', 'Viloyat vakili',
             { title: 'Kechikish bosqichlari', children: stages.map((stage) => stage.label) },
             'Jami', 'Sana',
           ], visibleRecords.map((row) => [
             row.district.region.name, row.district.name,
-            row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName,
+            row.district.regionalEmployeeAssignment?.user.fullName,
             ...stages.map((stage) => row[stage.field]), total(row), dayjs(row.recordDate.slice(0, 10)).format('DD.MM.YYYY'),
           ]), { highlight: (row) => worstIds.has(visibleRecords[row].id) })}>Excel uchun eksport</Button>
           {canWrite && <Popconfirm title={`${filters.date.format('DD.MM.YYYY')} uchun yozuvi yo‘q barcha tumanlarga 0 kiritilsinmi?`} okText="Ha" cancelText="Yo‘q" onConfirm={() => fillZeroMutation.mutate()}>
@@ -153,7 +151,7 @@ function OverdueApplicationsPage({ token, user }: { token: string; user: User })
         size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"
         rowKey="id" columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? "[&>td]:!bg-red-50" : ""} sticky={{ offsetHeader: 64 }}
         pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }}
-        scroll={{ x: 1460 }} locale={{ emptyText: 'Yozuvlar topilmadi' }}
+        scroll={{ x: 1270 }} locale={{ emptyText: 'Yozuvlar topilmadi' }}
       />
     </Card>
   </Space>

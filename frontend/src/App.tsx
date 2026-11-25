@@ -5,7 +5,6 @@ import AdminPanel from './AdminPanel'
 import AssignmentsPage from './AssignmentsPage'
 import ReportPage from './ReportPage'
 import XatlovPage from './XatlovPage'
-import XatlovEmployeesTab from './XatlovEmployeesTab'
 import MkdPage from './MkdPage'
 import RadLimitPage from './RadLimitPage'
 import OverdueApplicationsPage from './OverdueApplicationsPage'
@@ -58,7 +57,7 @@ function App() {
       setToken(loginData.token)
       setUser(currentUserData.user)
       const role: User['role'] = currentUserData.user.role
-      setPage(role === 'ADMIN' ? 'admin' : role === 'DISTRICT_HEAD' ? 'xatlov' : role === 'PAYMENT_SPECIALIST' ? 'payments' : 'dashboard')
+      setPage(role === 'ADMIN' ? 'admin' : role === 'DISTRICT_HEAD' ? 'report' : role === 'PAYMENT_SPECIALIST' ? 'payments' : 'dashboard')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Kirish amalga oshmadi')
     } finally {
@@ -93,7 +92,7 @@ function App() {
     return (
       <AppLayout user={user} page={page} error={error} onNavigate={setPage} onLogout={signOut}>
         {user.role === 'PAYMENT_SPECIALIST' ? <PaymentEntryPage {...props} />
-          : user.role === 'DISTRICT_HEAD' ? (page === 'report' ? <ReportPage {...props} /> : page === 'dashboard' ? <DashboardPage {...props} /> : page === 'payments' ? <PaymentsPage {...props} /> : <XatlovEmployeesTab {...props} />)
+          : user.role === 'DISTRICT_HEAD' ? (page === 'dashboard' ? <DashboardPage {...props} /> : page === 'payments' ? <PaymentsPage {...props} /> : <ReportPage {...props} />)
           : page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
           : page === 'assignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage {...props} />
           : page === 'report' ? <ReportPage {...props} />

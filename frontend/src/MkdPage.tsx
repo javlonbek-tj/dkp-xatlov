@@ -10,7 +10,6 @@ type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DI
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; regionId: string; region: { id: string; name: string }
-  republicEmployeeAssignment: { user: { fullName: string } } | null
   regionalEmployeeAssignment: { user: { fullName: string } } | null
 }
 // In-progress MKD of the given year as of the record date.
@@ -83,7 +82,7 @@ function MkdPage({ token, user }: { token: string; user: User }) {
     for (const row of yearRecords) totals.set(row.districtId, (totals.get(row.districtId) ?? 0) + row.inProgressCount)
     return new Set([...totals].filter(([, total]) => total > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id))
   }, [yearRecords])
-  const visibleRecords = yearRecords.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName, `${row.year}-yil`]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const visibleRecords = yearRecords.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.regionalEmployeeAssignment?.user.fullName, `${row.year}-yil`]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   function openEditor(districtId: string, record?: MkdRecord) {
     setEditor({ districtId, record })
@@ -114,18 +113,18 @@ function MkdPage({ token, user }: { token: string; user: User }) {
   const summary = () => visibleRecords.length ? <Table.Summary fixed="top">
     <Table.Summary.Row className="font-semibold [&>td]:!bg-slate-100">
       <Table.Summary.Cell index={0}>Jami ({totals.districts} ta tuman)</Table.Summary.Cell>
-      <Table.Summary.Cell index={1} colSpan={4} />
-      <Table.Summary.Cell index={5} align="center">{totals.inProgress.toLocaleString('ru-RU')}</Table.Summary.Cell>
-      {canWrite && <Table.Summary.Cell index={6} />}
+      <Table.Summary.Cell index={1} colSpan={3} />
+      <Table.Summary.Cell index={4} align="center">{totals.inProgress.toLocaleString('ru-RU')}</Table.Summary.Cell>
+      {canWrite && <Table.Summary.Cell index={5} />}
     </Table.Summary.Row>
   </Table.Summary> : null
 
   function exportTable() {
-    void exportExcel(`mkd-${filters.date.format('YYYY-MM-DD')}.xlsx`, ['Hudud', 'Tuman', 'Respublika xodimi', 'Hududiy xodim', 'Sana', 'Yil', 'Jarayonda'], [
-      ['Jami', `${totals.districts} ta tuman`, '', '', '', '', totals.inProgress],
+    void exportExcel(`mkd-${filters.date.format('YYYY-MM-DD')}.xlsx`, ['Hudud', 'Tuman', 'Hududiy xodim', 'Sana', 'Yil', 'Jarayonda'], [
+      ['Jami', `${totals.districts} ta tuman`, '', '', '', totals.inProgress],
       ...visibleRecords.map((row) => [
         row.district.region.name, row.district.name,
-        row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName,
+        row.district.regionalEmployeeAssignment?.user.fullName,
         formatDate(row.recordDate), `${row.year}-yil`, row.inProgressCount,
       ]),
     ], { totalRows: 1, highlight: (row) => row > 0 && worstDistricts.has(visibleRecords[row - 1].districtId) })
@@ -133,7 +132,6 @@ function MkdPage({ token, user }: { token: string; user: User }) {
 
   const columns: ColumnsType<MkdRecord> = [
     { title: 'Tuman', key: 'district', width: 190, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
-    { title: 'Respublika xodimi', key: 'republic', width: 190, ellipsis: true, render: (_, row) => row.district.republicEmployeeAssignment?.user.fullName ?? '—' },
     { title: 'Hududiy xodim', key: 'regional', width: 190, ellipsis: true, render: (_, row) => row.district.regionalEmployeeAssignment?.user.fullName ?? '—' },
     { title: 'Sana', dataIndex: 'recordDate', width: 130, align: 'center', render: (value: string) => formatDate(value) },
     { title: 'Yil', dataIndex: 'year', width: 110, align: 'center', render: (value: number) => <Tag color="blue" className="!m-0 !font-semibold">{value}-yil</Tag> },
@@ -160,7 +158,7 @@ function MkdPage({ token, user }: { token: string; user: User }) {
       <Select allowClear placeholder="Yil" className="min-w-32" value={year ?? undefined} options={yearOptions} onChange={(value?: number) => setFilters((old) => ({ ...old, year: value ?? null }))} />
       <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman, xodim yoki yil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button>{canWrite && <Popconfirm title={`${filters.date.format('DD.MM.YYYY')} uchun ${year}-yil bo‘yicha yozuvi yo‘q barcha tumanlarga 0 kiritilsinmi?`} okText="Ha" cancelText="Yo‘q" disabled={!year} onConfirm={fillZero}><Button disabled={!year} loading={fillZeroMutation.isPending} title={year ? undefined : 'Avval yilni tanlang'}>Barchasiga 0 kiritish</Button></Popconfirm>}<Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstDistricts.has(row.districtId) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1050 }} locale={{ emptyText: 'MKD yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman, xodim yoki yil bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button>{canWrite && <Popconfirm title={`${filters.date.format('DD.MM.YYYY')} uchun ${year}-yil bo‘yicha yozuvi yo‘q barcha tumanlarga 0 kiritilsinmi?`} okText="Ha" cancelText="Yo‘q" disabled={!year} onConfirm={fillZero}><Button disabled={!year} loading={fillZeroMutation.isPending} title={year ? undefined : 'Avval yilni tanlang'}>Barchasiga 0 kiritish</Button></Popconfirm>}<Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstDistricts.has(row.districtId) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 860 }} locale={{ emptyText: 'MKD yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'MKD yozuvini tahrirlash' : 'MKD yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>, all: Values) => {

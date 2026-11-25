@@ -49,14 +49,11 @@ router.get('/', requireAuth, async (request, response, next) => {
       return;
     }
 
-    const [groupLeader, districts] = await Promise.all([
-      prisma.region.findUnique({ where: { id: region.id }, select: { groupLeaderAssignment: { select: employeeSelect } } }),
-      prisma.district.findMany({
-        where: { AND: [scope, { regionId: region.id }] },
-        orderBy: { name: 'asc' },
-        include: { republicEmployeeAssignment: { select: employeeSelect }, regionalEmployeeAssignment: { select: employeeSelect } },
-      }),
-    ]);
+    const districts = await prisma.district.findMany({
+      where: { AND: [scope, { regionId: region.id }] },
+      orderBy: { name: 'asc' },
+      include: { regionalEmployeeAssignment: { select: employeeSelect } },
+    });
     const ids = districts.map((district) => district.id);
     // Weekly migration covers Monday to Sunday of the report date's week, up to the report date.
     const weekStart = new Date(date);
@@ -104,7 +101,6 @@ router.get('/', requireAuth, async (request, response, next) => {
       return {
         id: district.id,
         name: district.name,
-        republicEmployee: district.republicEmployeeAssignment?.user ?? null,
         regionalEmployee: district.regionalEmployeeAssignment?.user ?? null,
         engineerCount: district.engineerCount,
         xatlovEmployeeCount: district.xatlovEmployeeCount,
@@ -137,7 +133,7 @@ router.get('/', requireAuth, async (request, response, next) => {
     response.json({
       date: date.toISOString().slice(0, 10),
       regions,
-      region: { ...region, groupLeader: groupLeader?.groupLeaderAssignment?.user.fullName ?? null },
+      region,
       mkdYears: mkdYears.map((item) => item.year),
       rows,
     });

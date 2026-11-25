@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import PaymentSpecialistsTab from './PaymentSpecialistsTab'
+import DistrictHeadsTab from './DistrictHeadsTab'
 import { apiFetch } from './api'
 import {
   Alert,
@@ -427,6 +428,7 @@ function AdminPanel({ token, user }: { token: string; user: Employee }) {
                 </>}
               </Space>,
             },
+            { key: 'districtHeads', label: 'Tuman rahbarlari', children: <DistrictHeadsTab token={token} districts={districts} /> },
             { key: 'paymentSpecialists', label: 'To‘lov mutaxassislari', children: <PaymentSpecialistsTab token={token} districts={districts} /> },
           ].filter((item) => isAdmin || (item.key !== 'users' && item.key !== 'paymentSpecialists'))} />
         </Card>

@@ -14,7 +14,6 @@ type Employee = { fullName: string; phone: string | null } | null
 type ReportRow = {
   id: string
   name: string
-  republicEmployee: Employee
   regionalEmployee: Employee
   engineerCount: number | null
   xatlovEmployeeCount: number | null
@@ -39,16 +38,14 @@ type ReportData = {
   date: string
   mkdYears: number[]
   regions: { id: string; name: string }[]
-  region: { id: string; name: string; groupLeader: string | null } | null
+  region: { id: string; name: string } | null
   rows: ReportRow[]
 }
 type Line = {
   key: string
   index: number | null
   name: string
-  republic: Employee
   regional: Employee
-  leader?: string | null
   engineerCount: number | null
   xatlovEmployeeCount: number | null
   objectCount: number | null
@@ -98,7 +95,6 @@ function toLine(row: ReportRow, index: number): Line {
     key: row.id,
     index: index + 1,
     name: row.name,
-    republic: row.republicEmployee,
     regional: row.regionalEmployee,
     engineerCount: row.engineerCount,
     xatlovEmployeeCount: row.xatlovEmployeeCount,
@@ -128,7 +124,7 @@ function toLine(row: ReportRow, index: number): Line {
 }
 
 function totalLine(lines: Line[], region: NonNullable<ReportData['region']>): Line {
-  const total = { key: 'total', index: null, name: region.name, republic: null, regional: null, leader: region.groupLeader, mkdByYear: {} } as Line
+  const total = { key: 'total', index: null, name: region.name, regional: null, mkdByYear: {} } as Line
   for (const field of summedFields) {
     const values = lines.map((line) => line[field]).filter((value): value is number => value !== null)
     ;(total[field] as number | null) = values.length ? values.reduce((sum, value) => sum + value, 0) : null
@@ -228,14 +224,7 @@ function ReportPage({ token }: { token: string; user: User }) {
   const columns: ColumnsType<Line> = [
     { title: 'T/r', dataIndex: 'index', align: 'center', render: (value: number | null) => value ?? '' },
     { title: 'Hudud nomi', dataIndex: 'name', render: (value: string, line) => line.index === null ? <strong>{value}</strong> : value },
-    {
-      title: 'Respublika vakili',
-      onCell: (line) => ({ colSpan: line.index === null ? 2 : 1 }),
-      render: (_, line) => line.index === null
-        ? <strong>{line.leader ? `Bosh vakil — ${line.leader}` : 'Bosh vakil belgilanmagan'}</strong>
-        : employeeCell(line.republic),
-    },
-    { title: 'Viloyat vakili', onCell: (line) => ({ colSpan: line.index === null ? 0 : 1 }), render: (_, line) => employeeCell(line.regional) },
+    { title: 'Viloyat vakili', render: (_, line) => line.index === null ? '' : employeeCell(line.regional) },
     {
       title: 'Xatlov va migratsiya',
       children: [
@@ -285,14 +274,14 @@ function ReportPage({ token }: { token: string; user: User }) {
     // Leaf column positions of the red-highlighted cells, matching the table.
     // The day columns are exported too while they are open.
     const shift = weekOpen ? weekDays.length : 0
-    const radColumns = [14, 15, 16, 17].map((column) => column + shift)
+    const radColumns = [13, 14, 15, 16].map((column) => column + shift)
     const title = {
       lines: [`“Dolzarb 90 kunlik” doirasida ${data?.region?.name ?? ''} boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida`, 'MA’LUMOT'],
       note: `${date.format('DD.MM.YYYY')} y. soat ${dayjs().format('HH:mm')}`,
     }
     const headers: ExportHeader[] = [
       'T/r', 'Hudud nomi',
-      'Respublika vakili', 'Viloyat vakili',
+      'Viloyat vakili',
       {
         title: 'Xatlov va migratsiya', children: [
           'Jami xodimlar soni',
@@ -313,7 +302,6 @@ function ReportPage({ token }: { token: string; user: User }) {
     ]
     const rows = lines.map((line) => [
       line.index, line.name,
-      line.index === null ? `Bosh vakil — ${line.leader ?? ''}` : employeeText(line.republic),
       employeeText(line.regional),
       line.engineerCount, line.xatlovEmployeeCount, line.objectCount, line.mfyCount, line.completedMfyCount,
       line.censusCount, line.dailyMigrationPlan, line.dailyCompletedObjects, ...(weekOpen ? line.weekMigration : []), line.weeklyMigration, line.migrationPerEmployeeDay, line.radPlan, line.radActual, line.radPercent, line.radRemainder,
@@ -324,15 +312,15 @@ function ReportPage({ token }: { token: string; user: User }) {
       totalRows: 1,
       highlight: (row: number, column: number) => {
         const key = lines[row].key
-        return (column === 13 + shift && worstPerEmployee.has(key))
+        return (column === 12 + shift && worstPerEmployee.has(key))
           || (radColumns.includes(column) && worstRad.has(key))
-          || (column === 18 + shift && worstOverdue1to3.has(key))
-          || (column === 19 + shift && worstOverdue4to7.has(key))
-          || (column === 20 + shift && worstOverdue8to14.has(key))
-          || (column === 21 + shift && worstOverdue15to30.has(key))
-          || (column === 22 + shift && worstOverdueOver30.has(key))
+          || (column === 17 + shift && worstOverdue1to3.has(key))
+          || (column === 18 + shift && worstOverdue4to7.has(key))
+          || (column === 19 + shift && worstOverdue8to14.has(key))
+          || (column === 20 + shift && worstOverdue15to30.has(key))
+          || (column === 21 + shift && worstOverdueOver30.has(key))
           // MKD "Jami" and the year columns.
-          || (column >= 23 + shift && column <= 23 + shift + mkdYears.length && worstMkd.has(key))
+          || (column >= 22 + shift && column <= 22 + shift + mkdYears.length && worstMkd.has(key))
       },
     }
     const filename = `hisobot-${date.format('YYYY-MM-DD')}`
@@ -346,7 +334,7 @@ function ReportPage({ token }: { token: string; user: User }) {
     else void exportExcel(`${filename}.xlsx`, headers, rows, options)
   }
 
-  // Short print-ready Excel (A4 landscape, one page): no republic representative, no daily plan, days of the week collapsed.
+  // Short print-ready Excel (A4 landscape, one page): no daily plan, days of the week collapsed.
   function exportShortExcel() {
     const title = {
       lines: [`“Dolzarb 90 kunlik” doirasida ${data?.region?.name ?? ''} boshqarmasi tomonidan amalga oshirilgan ishlar to‘g‘risida`, 'MA’LUMOT'],

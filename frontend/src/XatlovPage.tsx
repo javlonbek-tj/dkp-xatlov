@@ -1,12 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag } from 'antd'
+import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { DownOutlined, RightOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { employeeText, exportExcel, type ExportHeader } from './excel-export'
 import { exportPdf } from './pdf-export'
-import XatlovEmployeesTab from './XatlovEmployeesTab'
 import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
@@ -15,7 +14,6 @@ type District = {
   id: string; name: string; engineerCount: number | null; regionId: string
   xatlovEmployeeCount: number | null; objectCount: number | null; mfyCount: number | null; dailyMigrationPlan: number | null
   region: { id: string; name: string }
-  republicEmployeeAssignment: { user: { fullName: string; phone: string | null } } | null
   regionalEmployeeAssignment: { user: { fullName: string; phone: string | null } } | null
 }
 type RecordRow = {
@@ -131,7 +129,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   // A user who sees a single region (e.g. a Republic employee or viewer assigned to Navoiy) has it selected by default.
   const regionId = filters.regionId ?? (user.role !== 'ADMIN' && regions.length === 1 ? regions[0].id : undefined)
   const filterDistricts = data.districts.filter((item) => !regionId || item.regionId === regionId)
-  const visibleRecords = data.records.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName, row.recordDate, row.completedMfyNames]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const visibleRecords = data.records.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.regionalEmployeeAssignment?.user.fullName, row.recordDate, row.completedMfyNames]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   function openEditor(districtId: string, record?: RecordRow) {
     setEditor({ districtId, record })
@@ -225,9 +223,9 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   const summary = () => visibleRecords.length ? <Table.Summary fixed="top">
     <Table.Summary.Row className="font-semibold [&>td]:!bg-slate-100">
       <Table.Summary.Cell index={0}>Jami ({visibleDistricts.length} ta tuman)</Table.Summary.Cell>
-      <Table.Summary.Cell index={1} colSpan={2} />
-      {summaryCells.map((content, index) => <Table.Summary.Cell key={index} index={index + 3} align="center">{content}</Table.Summary.Cell>)}
-      <Table.Summary.Cell index={summaryCells.length + 3} colSpan={canWrite ? 3 : 2} />
+      <Table.Summary.Cell index={1} />
+      {summaryCells.map((content, index) => <Table.Summary.Cell key={index} index={index + 2} align="center">{content}</Table.Summary.Cell>)}
+      <Table.Summary.Cell index={summaryCells.length + 2} colSpan={canWrite ? 3 : 2} />
     </Table.Summary.Row>
   </Table.Summary> : null
 
@@ -241,7 +239,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     const planTitle = `Kunlik reja (${planDeadline} gacha)`
     const headers: ExportHeader[] = [
       'Hudud', 'Tuman',
-      'Respublika vakili', 'Viloyat vakili',
+      'Viloyat vakili',
       { title: 'Xodimlar', children: ['Jami', 'Xatlovda'] },
       { title: 'Natijalar', children: ['Tugallangan MFY', 'Xatlov soni', 'Yakunlangan obyekt', 'Migratsiya soni', 'Kunlik migratsiya rejasi'] },
       { title: 'Haftalik (Du–Ya)', children: weekOpen
@@ -251,10 +249,9 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       'Tugallangan MFY nomlari', 'Sana',
     ]
     const rows = [
-      ['Jami', `${visibleDistricts.length} ta tuman`, '', '', totals.engineers, totals.xatlovEmployees, totals.completedMfy, totals.census, totals.completedObjects, totals.migration, totals.migrationPlan, ...(weekOpen ? dayTotal('censusCount') : []), totals.weeklyCensus, ...(weekOpen ? dayTotal('migrationCount') : []), totals.weeklyMigration, perEmployeeDay(totals.weeklyMigration, totals.employeeDays), totals.remaining, dailyPlan(totals.remaining, plan?.fiveDayWorkDays), dailyPlan(totals.remaining, plan?.sixDayWorkDays), forecastText(totalForecast), '', ''],
+      ['Jami', `${visibleDistricts.length} ta tuman`, '', totals.engineers, totals.xatlovEmployees, totals.completedMfy, totals.census, totals.completedObjects, totals.migration, totals.migrationPlan, ...(weekOpen ? dayTotal('censusCount') : []), totals.weeklyCensus, ...(weekOpen ? dayTotal('migrationCount') : []), totals.weeklyMigration, perEmployeeDay(totals.weeklyMigration, totals.employeeDays), totals.remaining, dailyPlan(totals.remaining, plan?.fiveDayWorkDays), dailyPlan(totals.remaining, plan?.sixDayWorkDays), forecastText(totalForecast), '', ''],
       ...visibleRecords.map((row) => [
         row.district.region.name, row.district.name,
-        employeeText(row.district.republicEmployeeAssignment?.user),
         employeeText(row.district.regionalEmployeeAssignment?.user),
         row.district.engineerCount, row.district.xatlovEmployeeCount,
         row.completedMfyCount, row.censusCount, row.completedObjectCount, row.migrationCount, row.district.dailyMigrationPlan,
@@ -266,7 +263,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     ]
     // The day columns are exported too while they are open.
     const shift = weekOpen ? 2 * weekDays.length : 0
-    const options = { title, totalRows: 1, highlight: (row: number, column: number) => row > 0 && ((column === 13 + shift && worstPerEmployee.has(visibleRecords[row - 1].id)) || (column === 15 + shift && behindPlan(visibleRecords[row - 1])) || (column === 17 + shift && lateForecast(rowForecast(visibleRecords[row - 1])))) }
+    const options = { title, totalRows: 1, highlight: (row: number, column: number) => row > 0 && ((column === 12 + shift && worstPerEmployee.has(visibleRecords[row - 1].id)) || (column === 14 + shift && behindPlan(visibleRecords[row - 1])) || (column === 16 + shift && lateForecast(rowForecast(visibleRecords[row - 1])))) }
     const filename = `xatlov-${filters.date.format('YYYY-MM-DD')}`
     if (format === 'pdf') {
       setError(null)
@@ -325,7 +322,6 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
     : [total]
   const columns: ColumnsType<RecordRow> = [
     { title: 'Tuman', key: 'district', width: 170, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
-    { title: 'Respublika vakili', key: 'republic', width: 170, render: (_, row) => employeeCell(row.district.republicEmployeeAssignment?.user) },
     { title: 'Viloyat vakili', key: 'regional', width: 170, render: (_, row) => employeeCell(row.district.regionalEmployeeAssignment?.user) },
     { title: 'Xodimlar', children: [
       { title: 'Jami', key: 'engineers', width: 60, align: 'center', render: (_, row) => row.district.engineerCount ?? '—' },
@@ -377,7 +373,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
       <DatePicker allowClear={false} value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
     {plan && <Alert type="info" showIcon message={<span>Reja: {planDeadline} gacha qolgan ish kunlari — 5 kunlik haftada <b>{plan.fiveDayWorkDays}</b> kun, 6 kunlik haftada <b>{plan.sixDayWorkDays}</b> kun.</span>} />}
-    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={exportShortExcel} disabled={!visibleRecords.length}>Excel (qisqa, pechat uchun)</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 2140 + (weekOpen ? 2 * weekDays.length * 50 : 0) }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={exportShortExcel} disabled={!visibleRecords.length}>Excel (qisqa, pechat uchun)</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1970 + (weekOpen ? 2 * weekDays.length * 50 : 0) }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>
@@ -389,10 +385,7 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
   </Modal>
   </div>
 
-  return <Tabs items={[
-    { key: 'districts', label: 'Tumanlar bo‘yicha', children: districtTab },
-    { key: 'employees', label: 'Xodimlar kesimida', children: <XatlovEmployeesTab token={token} user={user} /> },
-  ]} />
+  return districtTab
 }
 
 export default XatlovPage

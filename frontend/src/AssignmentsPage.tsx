@@ -13,17 +13,15 @@ type District = {
   id: string
   name: string
   regionId: string
-  republicEmployeeAssignment: Assignment | null
   regionalEmployeeAssignment: Assignment | null
 }
 type Row = {
   id: string
   district: District
   region: Region
-  republic?: Assignment
   regional?: Assignment
 }
-type Status = 'complete' | 'missingRepublic' | 'missingRegional'
+type Status = 'complete' | 'missingRegional'
 
 function AssignmentsPage({ token }: { token: string; user: User }) {
   const [search, setSearch] = useState('')
@@ -39,7 +37,7 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
   const error = assignmentsQuery.error?.message ?? null
   const loading = assignmentsQuery.isPending
 
-  // One row per district with its Republic and regional representatives.
+  // One row per district with its regional representative.
   const rows = useMemo(() => {
     const regionById = new Map(regions.map((region) => [region.id, region]))
     return districts.flatMap((district): Row[] => {
@@ -49,7 +47,6 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
         id: district.id,
         district,
         region,
-        republic: district.republicEmployeeAssignment ?? undefined,
         regional: district.regionalEmployeeAssignment ?? undefined,
       }]
     }).sort((a, b) => a.region.name.localeCompare(b.region.name) || a.district.name.localeCompare(b.district.name))
@@ -57,12 +54,11 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
 
   const query = search.trim().toLocaleLowerCase()
   const visibleRows = rows.filter((row) =>
-    (!query || [row.district.name, row.republic?.user.fullName, row.regional?.user.fullName].join(' ').toLocaleLowerCase().includes(query))
+    (!query || [row.district.name, row.regional?.user.fullName].join(' ').toLocaleLowerCase().includes(query))
     && (!regionId || row.region.id === regionId)
     && (!districtId || row.district.id === districtId)
     && (!status
-      || (status === 'complete' && row.republic && row.regional)
-      || (status === 'missingRepublic' && !row.republic)
+      || (status === 'complete' && row.regional)
       || (status === 'missingRegional' && !row.regional)),
   )
 
@@ -83,11 +79,6 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
       title: 'Tuman', key: 'district', width: 200,
       sorter: (a, b) => a.district.name.localeCompare(b.district.name),
       render: (_, row) => <span className="font-medium">{row.district.name}</span>,
-    },
-    {
-      title: 'Respublika vakili', key: 'republic', width: 280,
-      sorter: (a, b) => (a.republic?.user.fullName ?? '').localeCompare(b.republic?.user.fullName ?? ''),
-      render: (_, row) => employeeCell(row, row.republic),
     },
     {
       title: 'Viloyat vakili', key: 'regional', width: 280,
@@ -132,14 +123,13 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
             value={status}
             onChange={setStatus}
             options={[
-              { value: 'complete', label: 'Ikkala vakil biriktirilgan' },
-              { value: 'missingRepublic', label: 'Respublika vakili yo‘q' },
+              { value: 'complete', label: 'Viloyat vakili biriktirilgan' },
               { value: 'missingRegional', label: 'Viloyat vakili yo‘q' },
             ]}
           />
           <Button className="ml-auto" onClick={() => void exportExcel('tayinlangan-xodimlar.xlsx',
-            ['Viloyat', 'Tuman', 'Respublika vakili', 'Viloyat vakili'],
-            visibleRows.map((row) => [row.region.name, row.district.name, employeeText(row.republic?.user), employeeText(row.regional?.user)]))}>
+            ['Viloyat', 'Tuman', 'Viloyat vakili'],
+            visibleRows.map((row) => [row.region.name, row.district.name, employeeText(row.regional?.user)]))}>
             Excel uchun eksport
           </Button>
         </div>
@@ -147,7 +137,7 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
           size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"
           rowKey="id" columns={columns} dataSource={visibleRows} sticky={{ offsetHeader: 64 }}
           pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }}
-          scroll={{ x: 940 }}
+          scroll={{ x: 660 }}
           locale={{ emptyText: 'Tumanlar topilmadi' }}
         />
       </Card>

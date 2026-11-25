@@ -10,7 +10,6 @@ type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DI
 type User = { id: string; username: string; fullName: string; role: Role }
 type District = {
   id: string; name: string; regionId: string; region: { id: string; name: string }
-  republicEmployeeAssignment: { user: { fullName: string } } | null
   regionalEmployeeAssignment: { user: { fullName: string } } | null
 }
 type RadLimit = {
@@ -72,7 +71,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
     .sort((a, b) => b.usage - a.usage)
     .slice(0, 3)
     .map((row) => row.id)), [data.records])
-  const visibleRecords = data.records.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const visibleRecords = data.records.filter((row) => JSON.stringify([row.district.region.name, row.district.name, row.district.regionalEmployeeAssignment?.user.fullName]).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   function openEditor(districtId: string, record?: RadLimit) {
     setEditor({ districtId, record })
@@ -108,12 +107,12 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
   const summary = () => visibleRecords.length ? <Table.Summary fixed="top">
     <Table.Summary.Row className="font-semibold [&>td]:!bg-slate-100">
       <Table.Summary.Cell index={0}>Jami ({totals.districts} ta tuman)</Table.Summary.Cell>
-      <Table.Summary.Cell index={1} colSpan={3} />
-      <Table.Summary.Cell index={4} align="center">{totals.limit.toLocaleString('ru-RU')}</Table.Summary.Cell>
-      <Table.Summary.Cell index={5} align="center">{totals.rejected.toLocaleString('ru-RU')}</Table.Summary.Cell>
-      <Table.Summary.Cell index={6} align="center"><span className={totals.remaining < 0 ? 'text-red-600' : ''}>{totals.remaining.toLocaleString('ru-RU')}</span></Table.Summary.Cell>
-      <Table.Summary.Cell index={7} align="center">{totals.limit > 0 ? <Tag color="blue" className="!m-0 min-w-12 text-center !font-semibold">{Math.round(totals.rejected / totals.limit * 100)}%</Tag> : '—'}</Table.Summary.Cell>
-      {canWrite && <Table.Summary.Cell index={8} />}
+      <Table.Summary.Cell index={1} colSpan={2} />
+      <Table.Summary.Cell index={3} align="center">{totals.limit.toLocaleString('ru-RU')}</Table.Summary.Cell>
+      <Table.Summary.Cell index={4} align="center">{totals.rejected.toLocaleString('ru-RU')}</Table.Summary.Cell>
+      <Table.Summary.Cell index={5} align="center"><span className={totals.remaining < 0 ? 'text-red-600' : ''}>{totals.remaining.toLocaleString('ru-RU')}</span></Table.Summary.Cell>
+      <Table.Summary.Cell index={6} align="center">{totals.limit > 0 ? <Tag color="blue" className="!m-0 min-w-12 text-center !font-semibold">{Math.round(totals.rejected / totals.limit * 100)}%</Tag> : '—'}</Table.Summary.Cell>
+      {canWrite && <Table.Summary.Cell index={7} />}
     </Table.Summary.Row>
   </Table.Summary> : null
 
@@ -122,14 +121,14 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
   // Same layout as the table: grouped headers, the totals row first and the worst districts in red.
   function exportTable() {
     void exportExcel(`rad-limitlari-${filters.date.format('YYYY-MM-DD')}.xlsx`, [
-      'Hudud', 'Tuman', 'Respublika xodimi', 'Hududiy xodim', 'Sana',
+      'Hudud', 'Tuman', 'Hududiy xodim', 'Sana',
       { title: 'Limit', children: ['Oylik limit', 'Rad etilgan', 'Qolgan limit'] },
       'Foiz',
     ], [
-      ['Jami', `${totals.districts} ta tuman`, '', '', '', totals.limit, totals.rejected, totals.remaining, usagePercent(totals.limit, totals.rejected)],
+      ['Jami', `${totals.districts} ta tuman`, '', '', totals.limit, totals.rejected, totals.remaining, usagePercent(totals.limit, totals.rejected)],
       ...visibleRecords.map((row) => [
         row.district.region.name, row.district.name,
-        row.district.republicEmployeeAssignment?.user.fullName, row.district.regionalEmployeeAssignment?.user.fullName,
+        row.district.regionalEmployeeAssignment?.user.fullName,
         formatDate(row.recordDate), row.monthlyLimit, row.rejectedApplications, row.remainingLimit,
         usagePercent(row.monthlyLimit, row.rejectedApplications),
       ]),
@@ -138,7 +137,6 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
 
   const columns: ColumnsType<RadLimit> = [
     { title: 'Tuman', key: 'district', width: 190, fixed: 'left', render: (_, row) => <div className="truncate leading-tight" title={row.district.name}><span className="font-medium">{row.district.name}</span><div className="text-xs text-slate-500">{row.district.region.name}</div></div> },
-    { title: 'Respublika xodimi', key: 'republic', width: 190, ellipsis: true, render: (_, row) => row.district.republicEmployeeAssignment?.user.fullName ?? '—' },
     { title: 'Hududiy xodim', key: 'regional', width: 190, ellipsis: true, render: (_, row) => row.district.regionalEmployeeAssignment?.user.fullName ?? '—' },
     { title: 'Sana', dataIndex: 'recordDate', width: 130, align: 'center', render: (value: string) => formatDate(value) },
     { title: 'Limit', children: [
@@ -167,7 +165,7 @@ function RadLimitPage({ token, user }: { token: string; user: User }) {
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <DatePicker allowClear={false} format="DD.MM.YYYY" value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
-    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1260 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki xodim bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={exportTable}>Excel uchun eksport</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="middle" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} rowClassName={(row) => worstIds.has(row.id) ? '[&>td]:!bg-red-50' : ''} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1070 }} locale={{ emptyText: 'RAD limitlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'RAD limitini tahrirlash' : 'RAD limitini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>

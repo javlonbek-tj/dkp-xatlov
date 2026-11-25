@@ -96,7 +96,6 @@ model District {
   radLimits     RadLimit[]
   overdueSnapshots OverdueSnapshot[]
   heads     User[]             @relation("DistrictHeads")
-  employees DistrictEmployee[]
   payments  PaymentRecord[]
   paymentApplications PaymentApplication[]
   etirofRecords EtirofRecord[]
@@ -174,40 +173,6 @@ model OverdueSnapshot {
   district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
   @@unique([districtId, recordDate])
-  @@index([recordDate])
-}
-
-// District staff without system accounts; the list is kept by the Republic employees of the region.
-model DistrictEmployee {
-  id         String   @id @default(cuid())
-  districtId String
-  fullName   String
-  position   String?
-  phone      String?
-  // Free text, e.g. on annual leave or studying.
-  note       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  district  District            @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  dailyWork EmployeeDailyWork[]
-
-  @@index([districtId])
-}
-
-// Daily census and migration counts of one district employee.
-model EmployeeDailyWork {
-  id             String   @id @default(cuid())
-  employeeId     String
-  recordDate     DateTime @db.Date
-  censusCount    Int
-  migrationCount Int
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  employee DistrictEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-
-  @@unique([employeeId, recordDate])
   @@index([recordDate])
 }
 
