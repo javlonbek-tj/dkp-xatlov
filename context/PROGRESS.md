@@ -533,3 +533,9 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 
 - `POST /api/etirof/import` is open to Republic employees as well as administrators: a Republic employee may load a file only for a region they are assigned to (the region from the file title must be one of their region assignments, otherwise 403 "siz … ga biriktirilmagansiz"). `canImport` is true for them, so the "Svodni Excel’dan yuklash" button appears on their E’tirof page.
 - Verified with backend `npm run build`; not checked in a browser.
+
+## Xatlov - Excel upload
+
+- The Xatlov page has "Excel’dan yuklash" next to the exports (administrators and Republic employees); manual entry is unchanged. The file is read in the browser (`XatlovImportButton.tsx`): header rows with "T/r" / "Hudud nomi", the region total row (T/r 0 or "… viloyati"), then one row per district with "Xatlov soni" → census, "Yakunlangan mahallalar" → completed MFY, "Xatlov yakunlangan obyekt" → completed objects, "Migratsiya soni" → migration and "To‘lov" (so‘m) → payment debt in mln so‘m. A window shows the rows and the date (taken from the file name, e.g. `Xatlov_2026-11-25.xlsx`, otherwise the page's date; it can be changed, not in the future) before saving.
+- `POST /api/xatlov/import`: same access as manual entry (administrators any district, Republic employees their writable districts); district names are matched within the region of the total row (`normalizeName` from `etirof.ts`, so "G'ozg'on shahri" matches "G‘ozg‘on shahar"); a record of that day is updated keeping its MFY names, otherwise created; nothing is saved when a row is invalid. No schema change.
+- Verified with backend `npm run build`, frontend `npx tsc -b` and `npm run lint`, and by running the file reader on `Xatlov_2026-11-25.xlsx` (Navoiy viloyati, 11 districts, values and debts read correctly); not checked in a browser and the endpoint was not called.

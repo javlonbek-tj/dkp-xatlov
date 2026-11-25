@@ -39,7 +39,7 @@ const cyrillic: Record<string, string> = {
   п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'x', ц: 's', ч: 'ch', ш: 'sh', щ: 'sh', ъ: '', ы: 'i', ь: '', э: 'e', ю: 'yu',
   я: 'ya', ў: 'o', қ: 'q', ғ: 'g', ҳ: 'h',
 };
-function normalizeName(value: string) {
+export function normalizeName(value: string) {
   return value.toLowerCase()
     // "е" at the start of a word or after a vowel is read "ye".
     .replace(/(^|[\s(аеёиоуўэюя])е/g, '$1ye')

@@ -6,6 +6,7 @@ import { DownOutlined, RightOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { employeeText, exportExcel, type ExportHeader } from './excel-export'
 import { exportPdf } from './pdf-export'
+import XatlovImportButton from './XatlovImportButton'
 import { apiFetch, applySaved, isOptimistic, optimisticId, useOptimisticMutation } from './api'
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
@@ -89,6 +90,7 @@ function employeeCell(user?: { fullName: string; phone?: string | null }) {
 
 function XatlovPage({ token, user }: { token: string; user: User }) {
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [editor, setEditor] = useState<{ districtId: string; record?: RecordRow } | null>(null)
   const [search, setSearch] = useState('')
@@ -367,13 +369,14 @@ function XatlovPage({ token, user }: { token: string; user: User }) {
 
   const districtTab = <div><Space direction="vertical" size="middle" className="w-full">
     {shownError && <Alert type="error" showIcon message={shownError} />}
+    {notice && <Alert type="success" showIcon closable message={notice} onClose={() => setNotice(null)} />}
     <Card size="small"><Space wrap>
       <Select allowClear={regions.length > 1} placeholder="Hudud" className="min-w-52" value={regionId} options={regions.map((item) => ({ value: item.id, label: item.name }))} onChange={(regionId) => setFilters((old) => ({ ...old, regionId, districtId: undefined }))} />
       <Select allowClear placeholder="Tuman" className="min-w-52" value={filters.districtId} options={filterDistricts.map((item) => ({ value: item.id, label: item.name }))} onChange={(districtId) => setFilters((old) => ({ ...old, districtId }))} />
       <DatePicker allowClear={false} value={filters.date} onChange={(value) => value && setFilters((old) => ({ ...old, date: value }))} />
     </Space></Card>
     {plan && <Alert type="info" showIcon message={<span>Reja: {planDeadline} gacha qolgan ish kunlari — 5 kunlik haftada <b>{plan.fiveDayWorkDays}</b> kun, 6 kunlik haftada <b>{plan.sixDayWorkDays}</b> kun.</span>} />}
-    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={exportShortExcel} disabled={!visibleRecords.length}>Excel (qisqa, pechat uchun)</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button><Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1970 + (weekOpen ? 2 * weekDays.length * 50 : 0) }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
+    <Card loading={query.isPending}><div className="mb-4 flex flex-wrap justify-between gap-3"><Input.Search allowClear placeholder="Hudud, tuman yoki MFY bo‘yicha qidirish" className="max-w-md" value={search} onChange={(event) => setSearch(event.target.value)} /><Space><Button onClick={() => exportTable('excel')}>Excel uchun eksport</Button><Button onClick={exportShortExcel} disabled={!visibleRecords.length}>Excel (qisqa, pechat uchun)</Button><Button onClick={() => exportTable('pdf')} disabled={!visibleRecords.length} loading={pdfLoading}>PDF yuklab olish</Button>{canWrite && <XatlovImportButton token={token} defaultDate={filters.date} onSaved={(date, text) => { setNotice(text); setFilters((old) => ({ ...old, date })) }} />}<Select placeholder="Yangi yozuv uchun tuman" className="min-w-64" disabled={!canWrite} options={filterDistricts.filter((item) => canEdit(item.id)).map((item) => ({ value: item.id, label: `${item.region.name} · ${item.name}` }))} onChange={(id) => openEditor(id)} /></Space></div><Table size="small" bordered tableLayout="fixed" className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap" rowKey="id" summary={summary} columns={columns} dataSource={visibleRecords} sticky={{ offsetHeader: 64 }} pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [20, 50, 100] }} scroll={{ x: 1970 + (weekOpen ? 2 * weekDays.length * 50 : 0) }} locale={{ emptyText: 'Xatlov yozuvlari topilmadi' }} /></Card>
   </Space>
   <Modal title={editor?.record ? 'Xatlov yozuvini tahrirlash' : 'Xatlov yozuvini qo‘shish'} open={!!editor} onCancel={() => setEditor(null)} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" onFinish={save} onValuesChange={(changed: Partial<Values>) => { if (editor && !editor.record && changed.recordDate) void prefill(editor.districtId, changed.recordDate) }}>
