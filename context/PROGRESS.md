@@ -528,3 +528,8 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - "Xodimlar kesimida" removed: `XatlovEmployeesTab`, the employees and daily work endpoints, and the `DistrictEmployee` / `EmployeeDailyWork` models. Migration `20261125020000_drop_district_employees` drops both tables (49 employees, no daily work rows); applied on Railway on 25.11.2026.
 - District heads stay: their accounts are kept on a new "Tuman rahbarlari" tab of the admin panel (`DistrictHeadsTab`, `/api/district-heads` in `backend/src/district-heads.ts`, for administrators and Republic employees within their regions). District heads see Bosh sahifa, Hisobot (default) and To‘lov undirish. Regional employees and payment specialists are unchanged.
 - Verified with `prisma validate`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## E'tirof - Republic employees load the svod
+
+- `POST /api/etirof/import` is open to Republic employees as well as administrators: a Republic employee may load a file only for a region they are assigned to (the region from the file title must be one of their region assignments, otherwise 403 "siz … ga biriktirilmagansiz"). `canImport` is true for them, so the "Svodni Excel’dan yuklash" button appears on their E’tirof page.
+- Verified with backend `npm run build`; not checked in a browser.

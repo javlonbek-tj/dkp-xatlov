@@ -69,7 +69,8 @@ router.get('/', readers, async (request, response, next) => {
     ]);
     const regionId = requestedRegionId ?? latest?.district.regionId ?? regions[0]?.id;
     const region = regions.find((item) => item.id === regionId);
-    const canImport = user.role === UserRole.ADMIN;
+    // Republic employees load the svod of the regions they are assigned to; the listed regions are only those.
+    const canImport = user.role === UserRole.ADMIN || user.role === UserRole.REPUBLIC_EMPLOYEE;
     const result = { date: date.toISOString().slice(0, 10), previousDate: previousDate.toISOString().slice(0, 10), regions, canImport };
     if (!region) {
       if (requestedRegionId) throw new ApiError(403, 'FORBIDDEN', 'You do not have access to this region');
@@ -100,13 +101,15 @@ router.get('/', readers, async (request, response, next) => {
 
 // Saves the sheets of one svod file (one sheet per day). A day already saved for a district is replaced,
 // so today's numbers can be loaded again later in the day. Nothing is saved when a row is invalid.
-router.post('/import', requireRole(UserRole.ADMIN), async (request, response, next) => {
+router.post('/import', requireRole(UserRole.ADMIN, UserRole.REPUBLIC_EMPLOYEE), async (request, response, next) => {
   try {
+    const user = request.auth!;
     const sheets = (request.body as { sheets?: unknown } | undefined)?.sheets;
     if (!Array.isArray(sheets) || sheets.length === 0 || sheets.length > 10) throw new ApiError(400, 'INVALID_SHEETS', 'Faylda 1 tadan 10 tagacha varaq bo‘lishi kerak');
-    const [regions, districts] = await Promise.all([
+    const [regions, districts, assigned] = await Promise.all([
       prisma.region.findMany({ select: { id: true, name: true } }),
       prisma.district.findMany({ select: { id: true, name: true, regionId: true } }),
+      prisma.employeeRegionAssignment.findMany({ where: { userId: user.id }, select: { regionId: true } }),
     ]);
     const today = tashkentToday().date;
     const errors: string[] = [];
@@ -123,6 +126,9 @@ router.post('/import', requireRole(UserRole.ADMIN), async (request, response, ne
       const title = typeof input.title === 'string' ? normalizeName(input.title) : '';
       const region = regions.find((item) => title.includes(normalizeName(item.name)));
       if (!region) throw new ApiError(400, 'INVALID_REGION', `"${name}": sarlavhadan viloyat aniqlanmadi`);
+      if (user.role !== UserRole.ADMIN && !assigned.some((item) => item.regionId === region.id)) {
+        throw new ApiError(403, 'FORBIDDEN', `"${name}": siz ${region.name}ga biriktirilmagansiz`);
+      }
       const byName = new Map(districts.filter((item) => item.regionId === region.id).map((item) => [normalizeName(item.name), item.id]));
       const rows = input.rows;
       if (!Array.isArray(rows) || rows.length === 0 || rows.length > 100) throw new ApiError(400, 'INVALID_ROWS', `"${name}": tumanlar ro‘yxati topilmadi`);
