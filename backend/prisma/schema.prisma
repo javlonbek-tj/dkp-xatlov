@@ -21,12 +21,6 @@ enum UserRole {
   PAYMENT_SPECIALIST
 }
 
-enum CallStatus {
-  CALLED_SUCCESSFULLY
-  NO_ANSWER
-  CALLBACK_REQUIRED
-}
-
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -101,11 +95,11 @@ model District {
   mkdRecords    MkdRecord[]
   radLimits     RadLimit[]
   overdueSnapshots OverdueSnapshot[]
-  callLogs CallLog[]
   heads     User[]             @relation("DistrictHeads")
   employees DistrictEmployee[]
   payments  PaymentRecord[]
   paymentApplications PaymentApplication[]
+  etirofRecords EtirofRecord[]
 
   @@unique([name, regionId])
   @@index([regionId])
@@ -183,24 +177,6 @@ model OverdueSnapshot {
   @@index([recordDate])
 }
 
-model CallLog {
-  id                    String     @id @default(cuid())
-  districtId            String
-  callDate              DateTime   @db.Date
-  status                CallStatus
-  monitoringAreas       String[]   @default([])
-  issues                String?
-  nextAction            String?
-  followUpDate          DateTime?  @db.Date
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-
-  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
-
-  @@unique([districtId, callDate])
-  @@index([callDate, status])
-}
-
 // District staff without system accounts; the list is kept by the Republic employees of the region.
 model DistrictEmployee {
   id         String   @id @default(cuid())
@@ -268,6 +244,33 @@ model PaymentApplication {
   district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
   @@index([districtId])
+}
+
+// One day of a district's recognition (e'tirof) process, imported from the daily svod Excel file of sync.kadastr.uz.
+model EtirofRecord {
+  id               String    @id @default(cuid())
+  districtId       String
+  recordDate       DateTime  @db.Date
+  // Moves during recordDate (counted up to dayAsOf when the day was not over yet).
+  toPublic         Int
+  toAdliya         Int
+  adliyaToPayment  Int
+  editToAdliya     Int
+  paid             Int
+  // Set when the day was not over at export: the time the daily counts were taken.
+  dayAsOf          DateTime?
+  // Objects at the Kengash when the snapshot was taken; overdue = total - within the 30-day term.
+  kengashTotal     Int
+  kengashInTerm    Int
+  kengashOver90    Int
+  kengashAsOf      DateTime
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, recordDate])
+  @@index([recordDate])
 }
 
 model EmployeeRegionAssignment {

@@ -507,3 +507,16 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - The plan table of the "Reja" tab is now a shared `PaymentPlanTable` (plan helpers `dailyPlan`, `weeklyPlan`, `percentOf` moved to `payments.ts`); the totals row is shown when there is more than one district.
 - Payment specialists have a "Reja" tab with the same table for their own district (with a date picker), replacing the plan card on the entry tab.
 - Verified with frontend `npx tsc -b` and `npm run lint`; not checked in a browser.
+
+## E'tirof jarayoni - Daily svod page
+
+- New `EtirofRecord` (district, date, the day's five moves — to public discussion, to adliya, adliya to payment, edit to adliya, paid — with `dayAsOf` when the day was not over, and the Kengash snapshot: total, within 30 days, over 90 days, `kengashAsOf`). Migration `20261125000000_etirof_records` (additive), applied on Railway on 25.11.2026.
+- `backend/src/etirof.ts` (`/api/etirof`): `GET /` (administrators, republic and regional employees, viewers; report district scope) returns the selected date and the previous day per district of a region (default: the region with the latest upload). `POST /import` (administrator) saves the sheets of the svod Excel file; the region comes from the title and Cyrillic district names are matched to the saved Latin names; a day already saved is replaced; nothing is saved when a row is invalid.
+- Frontend: "E’tirof" in the menu (`EtirofPage`): date (default today) and region filters, two tables — the previous day in full and the selected day "soat HH:MM holatiga" — with the region total, "Muddati o‘tgan" = Jami − Muddat ichida and the share in %, Excel export of each table, and "Svodni Excel’dan yuklash" for administrators (the file is read in the browser, one sheet per day).
+- Verified with `prisma validate`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`, and by running the page's file reader on `Navoiy_svod_24.11.2026.xlsx` (2 sheets, 11 districts each, dates and times read correctly) and the name matching against the Navoiy district names; not checked in a browser, and the import endpoint was not called because the migration is not applied.
+
+## Call log removed
+
+- The user decided the call log ("Qo‘ng‘iroqlar jurnali") is not needed, so it is removed completely: `backend/src/call-log.ts` and `/api/call-log`, `frontend/src/CallLogPage.tsx`, the "Qo‘ng‘iroqlar" menu item and page key, the `CallLog` model and `CallStatus` enum. Migration `20261125010000_drop_call_logs` drops the table and enum applied on Railway on 25.11.2026; the 41 call records (11.10–20.10.2026) were saved to a JSON file outside the repository before the drop. README and `.qa-cleanup.ts` no longer mention call logs; the login page text mentions e’tirof instead.
+- `TASK.md` and `context/PLAN.md` still describe the call log; they were left unchanged.
+- Verified with `prisma validate`, a schema diff against the last commit (equals the two new migrations), backend `npm run build`, frontend `npx tsc -b` and `npm run lint`; not checked in a browser.

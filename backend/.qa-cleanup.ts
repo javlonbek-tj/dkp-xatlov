@@ -9,7 +9,6 @@ const recordIds = {
   xatlovRecord: [fixtures.xatlov1Id, fixtures.xatlov2Id],
   radLimit: [fixtures.radId],
   overdueApplication: [fixtures.overdueId],
-  callLog: [fixtures.callId],
 };
 
 try {
@@ -39,7 +38,6 @@ try {
     await tx.mkdRecord.deleteMany({ where: { districtId: { in: districtIds } } });
     await tx.radLimit.deleteMany({ where: { districtId: { in: districtIds } } });
     await tx.overdueApplication.deleteMany({ where: { districtId: { in: districtIds } } });
-    await tx.callLog.deleteMany({ where: { districtId: { in: districtIds } } });
     await tx.region.update({ where: { id: fixtures.regionId }, data: { groupLeaderAssignmentId: null } });
     await tx.district.deleteMany({ where: { id: { in: districtIds } } });
     await tx.employeeRegionAssignment.deleteMany({ where: { id: { in: [fixtures.assignmentRep1Id, fixtures.assignmentRep2Id, fixtures.assignmentRegionalId] } } });

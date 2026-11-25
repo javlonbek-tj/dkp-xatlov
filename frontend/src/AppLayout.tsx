@@ -3,13 +3,13 @@ import { Alert, Avatar, Button, Drawer, Grid, Layout, Menu, Typography } from 'a
 import type { MenuProps } from 'antd'
 import {
   AlertOutlined,
+  AuditOutlined,
   BarChartOutlined,
   BuildOutlined,
   FileSearchOutlined,
   HomeOutlined,
   LogoutOutlined,
   MenuOutlined,
-  PhoneOutlined,
   SafetyCertificateOutlined,
   SolutionOutlined,
   TableOutlined,
@@ -19,7 +19,7 @@ import {
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role; isGroupLeader?: boolean }
-export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'calls' | 'payments'
+export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'payments' | 'etirof'
 
 const roleLabels: Record<Role, string> = {
   ADMIN: 'Administrator',
@@ -39,8 +39,8 @@ const pageLabels: Record<Page, string> = {
   mkd: 'MKD',
   rad: 'RAD limitlari',
   overdue: 'Muddati o‘tgan arizalar',
-  calls: 'Qoʻngʻiroqlar jurnali',
   payments: 'To‘lov undirish',
+  etirof: 'E’tirof jarayoni',
 }
 
 function initials(name: string) {
@@ -74,7 +74,7 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
       { key: 'rad', icon: <BarChartOutlined />, label: pageLabels.rad },
       { key: 'overdue', icon: <AlertOutlined />, label: 'Muddati o‘tgan' },
       { key: 'payments', icon: <WalletOutlined />, label: pageLabels.payments },
-      ...(user.role !== 'VIEWER' && user.role !== 'REGIONAL_EMPLOYEE' ? [{ key: 'calls', icon: <PhoneOutlined />, label: 'Qoʻngʻiroqlar' }] : []),
+      { key: 'etirof', icon: <AuditOutlined />, label: 'E’tirof' },
     ] },
     ...(user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE' ? [{ type: 'group' as const, label: 'Boshqaruv', children: [
       ...(user.role === 'ADMIN' || user.isGroupLeader ? [{ key: 'admin', icon: <TeamOutlined />, label: 'Xodimlar va tayinlovlar' }] : []),

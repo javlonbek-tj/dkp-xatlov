@@ -10,9 +10,9 @@ import MkdPage from './MkdPage'
 import RadLimitPage from './RadLimitPage'
 import OverdueApplicationsPage from './OverdueApplicationsPage'
 import DashboardPage from './DashboardPage'
-import CallLogPage from './CallLogPage'
 import PaymentEntryPage from './PaymentEntryPage'
 import PaymentsPage from './PaymentsPage'
+import EtirofPage from './EtirofPage'
 import AppLayout, { type Page } from './AppLayout'
 import { queryClient } from './api'
 
@@ -102,7 +102,7 @@ function App() {
           : page === 'rad' ? <RadLimitPage {...props} />
           : page === 'overdue' ? <OverdueApplicationsPage {...props} />
           : page === 'payments' ? <PaymentsPage {...props} />
-          : page === 'calls' && user.role !== 'VIEWER' && user.role !== 'REGIONAL_EMPLOYEE' ? <CallLogPage {...props} />
+          : page === 'etirof' ? <EtirofPage {...props} />
           : <DashboardPage {...props} />}
       </AppLayout>
     )
@@ -122,7 +122,7 @@ function App() {
           </div>
           <div>
             <h2 className="mb-3 text-3xl font-semibold leading-tight">Hududiy monitoring tizimi</h2>
-            <p className="text-indigo-100">Xatlov, MKD, RAD limit, muddati o‘tgan arizalar va qo‘ng‘iroqlar bo‘yicha kunlik ma’lumotlar bir joyda.</p>
+            <p className="text-indigo-100">Xatlov, MKD, RAD limit, muddati o‘tgan arizalar va e’tirof jarayoni bo‘yicha kunlik ma’lumotlar bir joyda.</p>
           </div>
           <span className="text-sm text-indigo-200">© {new Date().getFullYear()} Xatlov</span>
         </div>

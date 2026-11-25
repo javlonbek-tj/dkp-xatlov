@@ -11,11 +11,11 @@ import { mkdRouter } from './mkd.js';
 import { radLimitRouter } from './rad-limits.js';
 import { overdueApplicationsRouter } from './overdue-applications.js';
 import { dashboardRouter } from './dashboard.js';
-import { callLogRouter } from './call-log.js';
 import { reportRouter } from './report.js';
 import { assignmentsRouter } from './assignments.js';
 import { districtEmployeesRouter } from './district-employees.js';
 import { paymentsRouter } from './payments.js';
+import { etirofRouter } from './etirof.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -30,11 +30,11 @@ app.use('/api/mkd', mkdRouter);
 app.use('/api/rad-limits', radLimitRouter);
 app.use('/api/overdue-applications', overdueApplicationsRouter);
 app.use('/api/dashboard', dashboardRouter);
-app.use('/api/call-log', callLogRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/assignments', assignmentsRouter);
 app.use('/api/district-employees', districtEmployeesRouter);
 app.use('/api/payments', paymentsRouter);
+app.use('/api/etirof', etirofRouter);
 
 app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok' });
