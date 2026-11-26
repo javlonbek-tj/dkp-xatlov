@@ -99,6 +99,7 @@ model District {
   payments  PaymentRecord[]
   paymentApplications PaymentApplication[]
   etirofRecords EtirofRecord[]
+  adliyaSnapshots AdliyaSnapshot[]
 
   @@unique([name, regionId])
   @@index([regionId])
@@ -235,6 +236,28 @@ model EtirofRecord {
   district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
   @@unique([districtId, recordDate])
+  @@index([recordDate])
+}
+
+// Objects at the adliya stage of one district, from the "Адлияда турганлар" svod. Each day keeps the first upload
+// (morning) and the latest one; every later upload of the day replaces the latest.
+model AdliyaSnapshot {
+  id         String   @id @default(cuid())
+  districtId String
+  recordDate DateTime @db.Date
+  morning    Boolean
+  // When the numbers were taken from the portal (from the file title).
+  asOf       DateTime
+  inPublic   Int
+  inAdliya   Int
+  inPayment  Int
+  returned   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  district District @relation(fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([districtId, recordDate, morning])
   @@index([recordDate])
 }
 

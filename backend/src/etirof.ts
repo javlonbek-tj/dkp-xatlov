@@ -63,11 +63,12 @@ router.get('/', readers, async (request, response, next) => {
     }
 
     const scope = reportDistrictScope(user);
-    const [regions, latest] = await Promise.all([
+    const [regions, latest, latestAdliya] = await Promise.all([
       prisma.region.findMany({ where: { districts: { some: scope } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.etirofRecord.findFirst({ where: { district: scope }, orderBy: { updatedAt: 'desc' }, select: { district: { select: { regionId: true } } } }),
+      prisma.adliyaSnapshot.findFirst({ where: { district: scope }, orderBy: { updatedAt: 'desc' }, select: { district: { select: { regionId: true } } } }),
     ]);
-    const regionId = requestedRegionId ?? latest?.district.regionId ?? regions[0]?.id;
+    const regionId = requestedRegionId ?? latest?.district.regionId ?? latestAdliya?.district.regionId ?? regions[0]?.id;
     const region = regions.find((item) => item.id === regionId);
     // Republic employees load the svod of the regions they are assigned to; the listed regions are only those.
     const canImport = user.role === UserRole.ADMIN || user.role === UserRole.REPUBLIC_EMPLOYEE;
@@ -87,6 +88,14 @@ router.get('/', readers, async (request, response, next) => {
       where: { districtId: { in: districts.map((district) => district.id) }, recordDate: { in: [previousDate, date] } },
       select: recordSelect,
     });
+    const snapshots = await prisma.adliyaSnapshot.findMany({
+      where: { districtId: { in: districts.map((district) => district.id) }, recordDate: date },
+      select: { districtId: true, morning: true, asOf: true, inPublic: true, inAdliya: true, inPayment: true, returned: true },
+    });
+    const snapshot = (districtId: string, morning: boolean) => {
+      const item = snapshots.find((row) => row.districtId === districtId && row.morning === morning);
+      return item ? { ...item, districtId: undefined, morning: undefined } : null;
+    };
     const find = (districtId: string, day: Date) => {
       const record = records.find((item) => item.districtId === districtId && item.recordDate.getTime() === day.getTime());
       return record ? { ...record, districtId: undefined, recordDate: undefined } : null;
@@ -94,7 +103,10 @@ router.get('/', readers, async (request, response, next) => {
     response.json({
       ...result,
       region,
-      rows: districts.map((district) => ({ ...district, previous: find(district.id, previousDate), current: find(district.id, date) })),
+      rows: districts.map((district) => ({
+        ...district, previous: find(district.id, previousDate), current: find(district.id, date),
+        adliyaMorning: snapshot(district.id, true), adliyaLatest: snapshot(district.id, false),
+      })),
     });
   } catch (error) { next(error); }
 });
@@ -162,6 +174,55 @@ router.post('/import', requireRole(UserRole.ADMIN, UserRole.REPUBLIC_EMPLOYEE), 
       update: item.values,
     })));
     response.json({ saved: data.length, dates: [...new Set(data.map((item) => item.recordDate.toISOString().slice(0, 10)))].sort() });
+  } catch (error) { next(error); }
+});
+
+// Saves the "Адлияда турганлар" svod. The first upload of a day for a region is that day's morning snapshot;
+// every later upload replaces the day's latest snapshot, which the page compares with the morning one.
+const adliyaFields = ['inPublic', 'inAdliya', 'inPayment', 'returned'] as const;
+router.post('/adliya/import', requireRole(UserRole.ADMIN, UserRole.REPUBLIC_EMPLOYEE), async (request, response, next) => {
+  try {
+    const user = request.auth!;
+    const input = (request.body ?? {}) as Record<string, unknown>;
+    const asOf = parseDateTime(input.asOf, 'Fayl sarlavhasi');
+    const recordDate = tashkentToday(asOf).date;
+    if (recordDate > tashkentToday().date) throw new ApiError(400, 'INVALID_DATE', 'Kelajakdagi sana uchun ma’lumot kiritib bo‘lmaydi');
+    const title = typeof input.title === 'string' ? normalizeName(input.title) : '';
+    const region = (await prisma.region.findMany({ select: { id: true, name: true } })).find((item) => title.includes(normalizeName(item.name)));
+    if (!region) throw new ApiError(400, 'INVALID_REGION', 'Sarlavhadan viloyat aniqlanmadi');
+    if (user.role !== UserRole.ADMIN && (await prisma.employeeRegionAssignment.count({ where: { userId: user.id, regionId: region.id } })) === 0) {
+      throw new ApiError(403, 'FORBIDDEN', `Siz ${region.name}ga biriktirilmagansiz`);
+    }
+    const rows = input.rows;
+    if (!Array.isArray(rows) || rows.length === 0 || rows.length > 100) throw new ApiError(400, 'INVALID_ROWS', 'Faylda tumanlar ro‘yxati topilmadi');
+
+    const districts = await prisma.district.findMany({ where: { regionId: region.id }, select: { id: true, name: true } });
+    const byName = new Map(districts.map((item) => [normalizeName(item.name), item.id]));
+    const errors: string[] = [];
+    const seen = new Set<string>();
+    const data: { districtId: string; values: Record<(typeof adliyaFields)[number], number> }[] = [];
+    rows.forEach((row, index) => {
+      const values = (row ?? {}) as Record<string, unknown>;
+      const line = `${typeof values.line === 'number' ? values.line : index + 1}-qator`;
+      const districtId = typeof values.district === 'string' ? byName.get(normalizeName(values.district)) : undefined;
+      if (!districtId) { errors.push(`${line}: "${String(values.district ?? '')}" tumani ${region.name}da topilmadi`); return; }
+      if (seen.has(districtId)) { errors.push(`${line}: tuman takrorlangan`); return; }
+      seen.add(districtId);
+      if (adliyaFields.some((field) => !Number.isInteger(values[field]) || (values[field] as number) < 0 || (values[field] as number) > 10_000_000)) {
+        errors.push(`${line}: raqamlar butun va manfiy bo‘lmagan son bo‘lishi kerak`);
+        return;
+      }
+      data.push({ districtId, values: Object.fromEntries(adliyaFields.map((field) => [field, values[field] as number])) as Record<(typeof adliyaFields)[number], number> });
+    });
+    if (errors.length) throw new ApiError(400, 'INVALID_ROWS', `Fayldagi xatolar (${errors.length} ta): ${errors.slice(0, 10).join('; ')}${errors.length > 10 ? '; …' : ''}`);
+
+    const morning = (await prisma.adliyaSnapshot.count({ where: { recordDate, morning: true, district: { regionId: region.id } } })) === 0;
+    await prisma.$transaction(data.map((item) => prisma.adliyaSnapshot.upsert({
+      where: { districtId_recordDate_morning: { districtId: item.districtId, recordDate, morning } },
+      create: { districtId: item.districtId, recordDate, morning, asOf, ...item.values },
+      update: { asOf, ...item.values },
+    })));
+    response.json({ saved: data.length, date: recordDate.toISOString().slice(0, 10), morning });
   } catch (error) { next(error); }
 });
 

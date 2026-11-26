@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, DatePicker, Select, Space, Table, Typography, Upload } from 'antd'
+import { Alert, Button, Card, DatePicker, Select, Space, Table, Tabs, Typography, Upload } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { apiFetch } from './api'
 import { exportExcel, type ExportHeader } from './excel-export'
+import AdliyaTab, { type AdliyaSnapshot } from './AdliyaTab'
 
 type User = { id: string; role: string }
 type EtirofRecord = {
@@ -17,7 +18,7 @@ type EtirofData = {
   regions: { id: string; name: string }[]
   region: { id: string; name: string } | null
   canImport: boolean
-  rows: { id: string; name: string; previous: EtirofRecord | null; current: EtirofRecord | null }[]
+  rows: { id: string; name: string; previous: EtirofRecord | null; current: EtirofRecord | null; adliyaMorning: AdliyaSnapshot | null; adliyaLatest: AdliyaSnapshot | null }[]
 }
 type Line = { key: string; index: number | null; name: string; record: Omit<EtirofRecord, 'dayAsOf' | 'kengashAsOf'> | null }
 
@@ -151,7 +152,7 @@ function DayTable({ region, date, records, rows }: { region: string; date: strin
   </div>
 }
 
-// ---- Page: the previous day in full and the selected day as of the time it was loaded ----
+// ---- Page: the svod tab (the previous day in full and the selected day as of its upload) and the adliya tab ----
 
 function EtirofPage({ token }: { token: string; user: User }) {
   const client = useQueryClient()
@@ -191,20 +192,26 @@ function EtirofPage({ token }: { token: string; user: User }) {
             <Select className="w-64" placeholder="Hudud" showSearch optionFilterProp="label" value={regionId ?? data?.region?.id} onChange={setRegionId}
               options={(data?.regions ?? []).map((region) => ({ value: region.id, label: region.name }))} />
           </Space>
-          {data?.canImport && <Upload accept=".xlsx" showUploadList={false} beforeUpload={(file) => { void importFile(file); return false }}>
-            <Button type="primary" loading={importing}>Svodni Excel’dan yuklash</Button>
-          </Upload>}
         </div>
-        {data?.region ? <Space direction="vertical" size="large" className="w-full">
-          <DayTable region={data.region.name} date={data.previousDate} records={data.rows.map((row) => row.previous)} rows={data.rows} />
-          <DayTable region={data.region.name} date={data.date} records={data.rows.map((row) => row.current)} rows={data.rows} />
-        </Space> : <Alert type="info" showIcon message="Hudud topilmadi" />}
-        <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
+        {data?.region ? <Tabs items={[
+          { key: 'svod', label: 'Ish dinamikasi va Kengash', children: <>
+            {data.canImport && <div className="mb-3 flex justify-end"><Upload accept=".xlsx" showUploadList={false} beforeUpload={(file) => { void importFile(file); return false }}>
+              <Button type="primary" loading={importing}>Svodni Excel’dan yuklash</Button>
+            </Upload></div>}
+            <Space direction="vertical" size="large" className="w-full">
+              <DayTable region={data.region.name} date={data.previousDate} records={data.rows.map((row) => row.previous)} rows={data.rows} />
+              <DayTable region={data.region.name} date={data.date} records={data.rows.map((row) => row.current)} rows={data.rows} />
+            </Space>
+            <Typography.Paragraph type="secondary" className="!mb-0 !mt-3 text-xs">
           Manba: sync.kadastr.uz, «Эътироф йиғмаси» — «Иш динамикаси» va «Кенгаш» bo‘limlari. Ochiq muhokamaga o‘tdi — «Tashkilotlar xulosalari → in-public»;
           xulosa adliyaga o‘tdi — «in-public → adliya-decision»; adliyadan to‘lovga — «adliya-decision → To‘lovni kutish»; tahrirlashdan adliyaga — «Tahrirlashda → adliya-decision»;
           to‘lov qildi — «To‘lovni kutish → Kengash». Kengash ma’lumotlari portalda faqat joriy holatda ko‘rsatiladi; Kengashdagi muddat — 30 kun.
-          Muddati o‘tgan = Jami − Muddat ichida. Bir kunning fayli qayta yuklansa, avvalgi ma’lumot yangilanadi.
-        </Typography.Paragraph>
+              Muddati o‘tgan = Jami − Muddat ichida. Bir kunning fayli qayta yuklansa, avvalgi ma’lumot yangilanadi.
+            </Typography.Paragraph>
+          </> },
+          { key: 'adliya', label: 'Adliyada turganlar', children: <AdliyaTab token={token} region={data.region.name} date={data.date} rows={data.rows} canImport={data.canImport}
+            onSaved={(day) => setDate(dayjs(day))} /> },
+        ]} /> : <Alert type="info" showIcon message="Hudud topilmadi" />}
       </Card>
     </Space>
   )
