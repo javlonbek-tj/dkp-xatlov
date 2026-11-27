@@ -95,6 +95,7 @@ function App() {
           : user.role === 'DISTRICT_HEAD' ? (page === 'dashboard' ? <DashboardPage {...props} /> : page === 'payments' ? <PaymentsPage {...props} /> : <ReportPage {...props} />)
           : page === 'admin' && (user.role === 'ADMIN' || user.isGroupLeader) ? <AdminPanel {...props} />
           : page === 'assignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage {...props} />
+          : page === 'republicAssignments' && (user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE') ? <AssignmentsPage key="republic" {...props} kind="republic" />
           : page === 'report' ? <ReportPage {...props} />
           : page === 'xatlov' ? <XatlovPage {...props} />
           : page === 'mkd' ? <MkdPage {...props} />

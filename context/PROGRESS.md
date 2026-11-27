@@ -547,3 +547,9 @@ Wait for review before starting another increment. P5-T2 is complete; P6-T1 code
 - `POST /api/etirof/adliya/import` (administrators; Republic employees for their assigned regions, as for the svod): the date is the Tashkent date of the title time; the first upload of a day for a region is saved as the morning snapshot, every later upload replaces the day's latest snapshot. `GET /api/etirof` returns `adliyaMorning` / `adliyaLatest` per district for the selected date.
 - `AdliyaTab.tsx` reads the file in the browser (title "… (26.11.2026 11:48 ҳолатига)", columns "Очиқ муҳокамада", "Адлияда", "Тўловда", "Тузатиш учун қайтарилган"); the table shows the region total first and, for "Jami" and the four indicators, "Ertalab (HH:MM)", "Hozir (HH:MM)" and "Farqi" (now − morning) once a second upload exists, plus the share in the region; Excel export.
 - Verified with `prisma validate`, backend `npm run build`, frontend `npx tsc -b` and `npm run lint`, and by running the file reader on `adliya.xlsx` (11 districts, 11:48); not checked in a browser and the endpoint was not called because the migration is not applied.
+
+## "Hududga biriktirilganlar" page
+
+- New menu item "Hududga biriktirilganlar" (Boshqaruv group; administrators and Republic employees, same access and `/api/assignments` endpoint as "Tayinlangan xodimlar", which already returned the Republic assignment of each district). It lists each district with its Republic representative's full name and phone, sorted by region, then representative, then district; filters (search also by phone, region, district, assigned / not assigned) and Excel export (`hududga-biriktirilganlar.xlsx`).
+- Implemented by giving `AssignmentsPage` a `kind` prop (`regional` default, `republic`); no backend or schema change.
+- Verified with frontend `npx tsc -b` and `npm run lint`, and a read-only check that Navoiy's navoiy-2, navoiy-3 and navoiy-4 have districts and phone numbers; not checked in a browser.

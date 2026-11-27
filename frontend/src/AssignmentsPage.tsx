@@ -13,6 +13,7 @@ type District = {
   id: string
   name: string
   regionId: string
+  republicEmployeeAssignment: Assignment | null
   regionalEmployeeAssignment: Assignment | null
 }
 type Row = {
@@ -22,8 +23,11 @@ type Row = {
   regional?: Assignment
 }
 type Status = 'complete' | 'missingRegional'
+// 'regional': district → regional representative; 'republic': district → Republic employee assigned to it.
+type Kind = 'regional' | 'republic'
 
-function AssignmentsPage({ token }: { token: string; user: User }) {
+function AssignmentsPage({ token, kind = 'regional' }: { token: string; user: User; kind?: Kind }) {
+  const label = kind === 'republic' ? 'Respublika vakili' : 'Viloyat vakili'
   const [search, setSearch] = useState('')
   const [regionId, setRegionId] = useState<string>()
   const [districtId, setDistrictId] = useState<string>()
@@ -37,7 +41,7 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
   const error = assignmentsQuery.error?.message ?? null
   const loading = assignmentsQuery.isPending
 
-  // One row per district with its regional representative.
+  // One row per district with its representative of the selected kind.
   const rows = useMemo(() => {
     const regionById = new Map(regions.map((region) => [region.id, region]))
     return districts.flatMap((district): Row[] => {
@@ -47,14 +51,17 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
         id: district.id,
         district,
         region,
-        regional: district.regionalEmployeeAssignment ?? undefined,
+        regional: (kind === 'republic' ? district.republicEmployeeAssignment : district.regionalEmployeeAssignment) ?? undefined,
       }]
-    }).sort((a, b) => a.region.name.localeCompare(b.region.name) || a.district.name.localeCompare(b.district.name))
-  }, [districts, regions])
+    }).sort((a, b) => a.region.name.localeCompare(b.region.name)
+      // Republic employees cover several districts: keep each person's districts together, unassigned last.
+      || (kind === 'republic' ? (a.regional?.user.fullName ?? '￿').localeCompare(b.regional?.user.fullName ?? '￿') : 0)
+      || a.district.name.localeCompare(b.district.name))
+  }, [districts, regions, kind])
 
   const query = search.trim().toLocaleLowerCase()
   const visibleRows = rows.filter((row) =>
-    (!query || [row.district.name, row.regional?.user.fullName].join(' ').toLocaleLowerCase().includes(query))
+    (!query || [row.district.name, row.regional?.user.fullName, row.regional?.user.phone].join(' ').toLocaleLowerCase().includes(query))
     && (!regionId || row.region.id === regionId)
     && (!districtId || row.district.id === districtId)
     && (!status
@@ -81,7 +88,7 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
       render: (_, row) => <span className="font-medium">{row.district.name}</span>,
     },
     {
-      title: 'Viloyat vakili', key: 'regional', width: 280,
+      title: label, key: 'regional', width: 280,
       sorter: (a, b) => (a.regional?.user.fullName ?? '').localeCompare(b.regional?.user.fullName ?? ''),
       render: (_, row) => employeeCell(row, row.regional),
     },
@@ -123,12 +130,12 @@ function AssignmentsPage({ token }: { token: string; user: User }) {
             value={status}
             onChange={setStatus}
             options={[
-              { value: 'complete', label: 'Viloyat vakili biriktirilgan' },
-              { value: 'missingRegional', label: 'Viloyat vakili yo‘q' },
+              { value: 'complete', label: `${label} biriktirilgan` },
+              { value: 'missingRegional', label: `${label} yo‘q` },
             ]}
           />
-          <Button className="ml-auto" onClick={() => void exportExcel('tayinlangan-xodimlar.xlsx',
-            ['Viloyat', 'Tuman', 'Viloyat vakili'],
+          <Button className="ml-auto" onClick={() => void exportExcel(kind === 'republic' ? 'hududga-biriktirilganlar.xlsx' : 'tayinlangan-xodimlar.xlsx',
+            ['Viloyat', 'Tuman', label],
             visibleRows.map((row) => [row.region.name, row.district.name, employeeText(row.regional?.user)]))}>
             Excel uchun eksport
           </Button>

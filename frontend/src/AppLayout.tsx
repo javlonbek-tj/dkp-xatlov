@@ -6,6 +6,7 @@ import {
   AuditOutlined,
   BarChartOutlined,
   BuildOutlined,
+  ContactsOutlined,
   FileSearchOutlined,
   HomeOutlined,
   LogoutOutlined,
@@ -19,7 +20,7 @@ import {
 
 type Role = 'ADMIN' | 'REPUBLIC_EMPLOYEE' | 'REGIONAL_EMPLOYEE' | 'VIEWER' | 'DISTRICT_HEAD' | 'PAYMENT_SPECIALIST'
 type User = { id: string; username: string; fullName: string; role: Role; isGroupLeader?: boolean }
-export type Page = 'admin' | 'assignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'payments' | 'etirof'
+export type Page = 'admin' | 'assignments' | 'republicAssignments' | 'report' | 'dashboard' | 'xatlov' | 'mkd' | 'rad' | 'overdue' | 'payments' | 'etirof'
 
 const roleLabels: Record<Role, string> = {
   ADMIN: 'Administrator',
@@ -33,6 +34,7 @@ const roleLabels: Record<Role, string> = {
 const pageLabels: Record<Page, string> = {
   admin: 'Boshqaruv',
   assignments: 'Tayinlangan xodimlar',
+  republicAssignments: 'Hududga biriktirilganlar',
   report: 'Hisobot',
   dashboard: 'Bosh sahifa',
   xatlov: 'Xatlov',
@@ -78,6 +80,7 @@ function AppLayout({ user, page, error, onNavigate, onLogout, children }: {
     ...(user.role === 'ADMIN' || user.role === 'REPUBLIC_EMPLOYEE' ? [{ type: 'group' as const, label: 'Boshqaruv', children: [
       ...(user.role === 'ADMIN' || user.isGroupLeader ? [{ key: 'admin', icon: <TeamOutlined />, label: 'Xodimlar va tayinlovlar' }] : []),
       { key: 'assignments', icon: <SolutionOutlined />, label: pageLabels.assignments },
+      { key: 'republicAssignments', icon: <ContactsOutlined />, label: pageLabels.republicAssignments },
     ] }] : []),
   ]
 
